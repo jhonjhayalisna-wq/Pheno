@@ -41,7 +41,6 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.admin_credentials = AdminCredentials()
-        self.admin_credentials.ensure_default_super_admin()
         self.admin_session = AdminSession()
         self.admin_panel = None
         self.setWindowTitle('PhenoCoater - Cacao Seed Sorting & Grading System')
@@ -228,7 +227,6 @@ class MainWindow(QMainWindow):
 
     def open_admin_login(self):
         try:
-            self.admin_credentials.ensure_default_super_admin()
             dialog = AdminLoginDialog(self.admin_credentials, self)
         except (OSError, AuthStorageError) as exc:
             QMessageBox.critical(

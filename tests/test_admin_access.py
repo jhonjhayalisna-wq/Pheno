@@ -50,7 +50,10 @@ class AdminCredentialsTests(unittest.TestCase):
         self.assertFalse(self.credentials.is_configured())
 
     def test_admin_creation_and_password_reset_accept_short_passwords(self):
-        self.credentials.ensure_default_super_admin()
+        self.credentials.create_initial_admin(
+            "test-super-admin-password",
+            "test-super-admin-password",
+        )
         self.credentials.create_account("Operator", "operator", "short")
         self.assertTrue(self.credentials.verify_password("short", "operator"))
 

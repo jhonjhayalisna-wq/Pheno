@@ -11,7 +11,6 @@ HASH_ITERATIONS = 600_000
 SALT_BYTES = 32
 CONFIG_VERSION = 1
 SUPER_ADMIN_USERNAME = 'admin'
-SUPER_ADMIN_DEFAULT_PASSWORD = 'admin123'
 SUPER_ADMIN_ROLE = 'super_admin'
 ADMIN_ROLE = 'admin'
 
@@ -39,39 +38,6 @@ class AdminCredentials:
         except AuthStorageError:
             return False
         return bool(store.get('accounts'))
-
-    def ensure_default_super_admin(self):
-        try:
-            store = self._read_store()
-        except AuthStorageError:
-            store = {'accounts': []}
-
-        existing = self._find_account(store, SUPER_ADMIN_USERNAME)
-        if existing is not None:
-            if existing.get('role') is None:
-                existing['role'] = SUPER_ADMIN_ROLE
-            if existing.get('is_active') is None:
-                existing['is_active'] = True
-            if not existing.get('name'):
-                existing['name'] = 'Super Admin'
-            self._persist_store(store)
-            return existing
-
-        account = self._build_account(
-            name='Super Admin',
-            username=SUPER_ADMIN_USERNAME,
-            password=SUPER_ADMIN_DEFAULT_PASSWORD,
-            role=SUPER_ADMIN_ROLE,
-        )
-        store.setdefault('accounts', []).append(account)
-        store['super_admin_username'] = SUPER_ADMIN_USERNAME
-        store['algorithm'] = 'pbkdf2_hmac'
-        store['hash'] = HASH_NAME
-        store['iterations'] = HASH_ITERATIONS
-        store['salt'] = account['salt']
-        store['password_hash'] = account['password_hash']
-        self._persist_store(store)
-        return account
 
     def create_initial_admin(self, secret, confirmation):
         if not secret:

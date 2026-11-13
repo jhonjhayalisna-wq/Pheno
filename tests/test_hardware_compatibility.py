@@ -1916,7 +1916,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
             credentials = AdminCredentials(
                 Path(folder) / "admin_credentials.json"
             )
-            credentials.ensure_default_super_admin()
+            credentials.create_initial_admin(
+                "test-super-admin-password",
+                "test-super-admin-password",
+            )
             session = AdminSession()
             session.grant_admin("admin", SUPER_ADMIN_ROLE, "Super Admin")
             panel = AdminControlPanel(
@@ -2058,7 +2061,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
             credentials = AdminCredentials(
                 Path(folder) / "admin_credentials.json"
             )
-            credentials.ensure_default_super_admin()
+            credentials.create_initial_admin(
+                "test-super-admin-password",
+                "test-super-admin-password",
+            )
             session = AdminSession()
             session.grant_admin("admin", SUPER_ADMIN_ROLE, "Super Admin")
             panel = AdminControlPanel(FakeDashboard(), session, credentials)
@@ -2106,7 +2112,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
             credentials = AdminCredentials(
                 Path(folder) / "admin_credentials.json"
             )
-            credentials.ensure_default_super_admin()
+            credentials.create_initial_admin(
+                "test-super-admin-password",
+                "test-super-admin-password",
+            )
             dialog = AdminLoginDialog(credentials)
             self.assertEqual(dialog.username_input.text(), "")
             dialog.password_input.setText("secret")
@@ -2151,6 +2160,20 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(window.status_text.text(), "SYSTEM CONNECTED")
         window.dashboard_page.camera_status_changed.emit("NOT CONNECTED")
         self.assertEqual(window.status_text.text(), "SYSTEM CONNECTED")
+
+    def test_main_window_does_not_create_a_default_admin_account(self):
+        with tempfile.TemporaryDirectory() as folder:
+            credentials = AdminCredentials(
+                Path(folder) / "admin_credentials.json"
+            )
+            with patch("GUI.main_window.Dashboard", FakeDashboard), patch(
+                "GUI.main_window.AdminCredentials",
+                return_value=credentials,
+            ):
+                window = MainWindow()
+
+            self.assertFalse(credentials.is_configured())
+            window.close()
 
     def test_normal_window_starts_on_dashboard_and_denies_admin_routes(self):
         with patch("GUI.main_window.Dashboard", FakeDashboard):
