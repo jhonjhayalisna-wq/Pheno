@@ -4,10 +4,21 @@ import re
 import time
 from datetime import date
 from math import isfinite
+from pathlib import Path
+from time import perf_counter
+from typing import Any
 
 import cv2
 
-from .ai_model import get_configured_ai_model_path, load_yolo_model
+from .ai_model import (
+    YOLO_CONFIDENCE_THRESHOLD,
+    bundled_model_file,
+    draw_yolo_detections,
+    draw_yolo_status,
+    load_yolo_model,
+    prepare_yolo_frame,
+    save_yolo_model_file,
+)
 from .camera_controls import (
     CAMERA_CONTROL_DEFAULTS,
     CAMERA_RESOLUTIONS,
@@ -50,28 +61,44 @@ from .nir_classifier import (
 from NIR.as7265x import AS7265XReader
 
 
-AI_CONFIDENCE_THRESHOLD = 0.5
-
-
 class _InferenceSignals(QObject):
     completed = Signal(int, object, object, str)
 
 
 class _InferenceTask(QRunnable):
-    def __init__(self, token, model, frame):
+    def __init__(self, token, model, frame, frame_rate_buffer):
         super().__init__()
         self.token = token
         self.model = model
         self.frame = frame
+        self.frame_rate_buffer = frame_rate_buffer
         self.signals = _InferenceSignals()
 
     def run(self):
         try:
-            results = self.model(self.frame, conf=0.5, verbose=False)
+            started_at = perf_counter()
+            frame = prepare_yolo_frame(self.frame)
+            results = self.model(
+                frame,
+                verbose=False,
+                conf=YOLO_CONFIDENCE_THRESHOLD,
+            )
             result = results[0] if results else None
-            annotated_frame = self.frame.copy()
-            if result is not None:
-                annotated_frame = result.plot(img=annotated_frame)
+            object_count = draw_yolo_detections(
+                frame,
+                result,
+                self.model.names,
+            )
+            frame_rate = (
+                sum(self.frame_rate_buffer) / len(self.frame_rate_buffer)
+                if self.frame_rate_buffer
+                else 0.0
+            )
+            draw_yolo_status(frame, frame_rate, object_count)
+            elapsed = perf_counter() - started_at
+            self.frame_rate_buffer.append(1.0 / elapsed)
+            self.frame_rate_buffer = self.frame_rate_buffer[-200:]
+            annotated_frame = frame
             self.signals.completed.emit(
                 self.token,
                 result,
@@ -119,8 +146,8 @@ class Dashboard(QWidget):
         self.camera_control_values = CAMERA_CONTROL_DEFAULTS.copy()
         self.camera_control_overrides = {}
         self.camera_stream_overrides = {
-            cv2.CAP_PROP_FRAME_WIDTH: CAMERA_RESOLUTIONS["360P"][0],
-            cv2.CAP_PROP_FRAME_HEIGHT: CAMERA_RESOLUTIONS["360P"][1],
+            cv2.CAP_PROP_FRAME_WIDTH: CAMERA_RESOLUTIONS["480P"][0],
+            cv2.CAP_PROP_FRAME_HEIGHT: CAMERA_RESOLUTIONS["480P"][1],
         }
         self.camera_enabled = False
         self.camera_usage_enabled = True
@@ -129,7 +156,6 @@ class Dashboard(QWidget):
         self.last_ai_frame = None
         self.last_ai_result = None
         self.ai_model = None
-        self.ai_model_path = get_configured_ai_model_path()
         self.ai_model_error = ""
         self.nir_classifier = None
         self.nir_model_path = str(default_nir_model_path())
@@ -144,6 +170,7 @@ class Dashboard(QWidget):
         self.ai_inference_busy = False
         self.ai_inference_token = 0
         self.ai_inference_task = None
+        self.ai_frame_rate_buffer = []
         self.camera_timer = QTimer(self)
         self.camera_timer.timeout.connect(self.update_camera_feed)
         self.arduino_timer = QTimer(self)
@@ -205,8 +232,7 @@ class Dashboard(QWidget):
 
         self.setup_ui()
         self.set_nir_model_path(self.nir_model_path, log_result=False)
-        if self.ai_model_path:
-            self.set_ai_model_path(self.ai_model_path, log_result=False)
+        self.load_ai_model(log_result=False)
         self.update_camera_status("Camera is Off")
         self.update_camera_status_indicator()
         self.update_arduino_status()
@@ -216,8 +242,11 @@ class Dashboard(QWidget):
         super().resizeEvent(event)
 
         self.update_responsive_layout()
-        if self.last_frame is not None:
-            self.render_camera_frame(self.last_frame)
+        frame = self.last_ai_frame
+        if frame is None:
+            frame = self.last_frame
+        if frame is not None:
+            self.render_camera_frame(frame, rotate=frame is self.last_frame)
 
     def closeEvent(self, event):
         self.set_ir_sample_active(False)
@@ -942,7 +971,7 @@ class Dashboard(QWidget):
         self.last_frame = None
         self.last_ai_frame = None
         self.last_ai_result = None
-        self.last_ai_frame = None
+        self.ai_frame_rate_buffer = []
         self.update_camera_status("Camera is Off")
         self.update_camera_status_indicator()
         if was_enabled:
@@ -1243,6 +1272,7 @@ class Dashboard(QWidget):
                     self.ai_inference_token,
                     self.ai_model,
                     frame.copy(),
+                    self.ai_frame_rate_buffer.copy(),
                 )
                 task.signals.completed.connect(self._on_ai_inference_completed)
                 self.ai_inference_task = task
@@ -1257,7 +1287,10 @@ class Dashboard(QWidget):
             self.last_ai_frame = None
             display_frame = frame
 
-        self.render_camera_frame(display_frame)
+        self.render_camera_frame(
+            display_frame,
+            rotate=self.last_ai_frame is None,
+        )
 
     def _on_ai_inference_completed(
         self,
@@ -1266,10 +1299,16 @@ class Dashboard(QWidget):
         annotated_frame,
         error,
     ):
+        if token != self.ai_inference_token:
+            self.ai_inference_busy = False
+            self.ai_inference_task = None
+            return
+        if self.ai_inference_task is not None:
+            self.ai_frame_rate_buffer = (
+                self.ai_inference_task.frame_rate_buffer
+            )
         self.ai_inference_busy = False
         self.ai_inference_task = None
-        if token != self.ai_inference_token:
-            return
         if error:
             self.ai_model = None
             self.last_ai_result = None
@@ -1286,18 +1325,15 @@ class Dashboard(QWidget):
         )
         self.update_quality_from_ai_result(result)
         if self.last_ai_frame is not None:
-            self.render_camera_frame(self.last_ai_frame)
+            self.render_camera_frame(self.last_ai_frame, rotate=False)
 
-    def update_quality_from_ai_result(self, result):
+    def update_quality_from_ai_result(self, result: Any) -> str:
         boxes = getattr(result, "boxes", None)
         names = getattr(result, "names", {})
-        candidates = []
-        foreign_object_confidences = []
+        candidates: list[tuple[float, str]] = []
         if boxes is not None:
             for box in boxes:
                 confidence = float(box.conf[0])
-                if confidence < AI_CONFIDENCE_THRESHOLD:
-                    continue
                 class_id = int(box.cls[0])
                 if isinstance(names, dict):
                     raw_name = names.get(class_id, str(class_id))
@@ -1306,16 +1342,18 @@ class Dashboard(QWidget):
                 else:
                     raw_name = str(class_id)
                 normalized = normalize_quality_category(raw_name)
-                if normalized is None:
-                    foreign_object_confidences.append(confidence)
-                else:
-                    candidates.append((confidence, normalized))
+                candidates.append(
+                    (confidence, normalized or "UNDEFINED")
+                )
 
-        if foreign_object_confidences:
-            confidence = max(foreign_object_confidences)
-            quality = "UNDEFINED"
-        else:
-            confidence, quality = max(candidates, default=(0.0, "UNDEFINED"))
+        confidence, quality = max(
+            candidates,
+            key=lambda candidate: (
+                candidate[0],
+                candidate[1] == "UNDEFINED",
+            ),
+            default=(0.0, "UNDEFINED"),
+        )
         self.last_quality_confidence = confidence
         self.quality_value.setText(quality)
         self.update_quality_totals_display()
@@ -1438,35 +1476,76 @@ class Dashboard(QWidget):
         )
         self._send_bean_sort_command("UNDEFINED")
 
-    def set_ai_model_path(self, model_path, log_result=True):
-        model_path = str(model_path or "").strip()
-        self.ai_inference_token += 1
-        self.last_ai_result = None
-        self.last_ai_frame = None
-        self.update_quality_from_ai_result(None)
-        if not model_path:
-            self.ai_model = None
-            self.ai_model_path = ""
-            self.ai_model_error = ""
-            if log_result:
-                self.system_log_received.emit("AI model integration disabled.")
-            return True
-
+    def load_ai_model(
+        self,
+        log_result: bool = True,
+        model_file: str | Path | None = None,
+    ) -> bool:
         try:
-            model, model_file = load_yolo_model(model_path)
-        except (OSError, ValueError, RuntimeError) as exc:
+            model, loaded_model_file = load_yolo_model(model_file)
+        except (OSError, RuntimeError) as exc:
+            self.ai_model = None
             self.ai_model_error = str(exc)
+            self.ai_inference_token += 1
+            self.ai_frame_rate_buffer = []
+            self.last_ai_result = None
+            self.last_ai_frame = None
+            self.update_quality_from_ai_result(None)
             if log_result:
                 self.system_log_received.emit(self.ai_model_error)
             return False
 
+        self._activate_ai_model(model, loaded_model_file, log_result)
+        return True
+
+    def _activate_ai_model(
+        self,
+        model: Any,
+        model_file: Path,
+        log_result: bool,
+    ) -> None:
+        self.ai_inference_token += 1
+        self.ai_frame_rate_buffer = []
+        self.last_ai_result = None
+        self.last_ai_frame = None
+        self.update_quality_from_ai_result(None)
         self.ai_model = model
-        self.ai_model_path = model_path
         self.ai_model_error = ""
         if log_result:
             self.system_log_received.emit(
                 f"AI model loaded from {model_file}."
             )
+
+    def set_ai_model_file(
+        self,
+        model_file: str | Path | None,
+        log_result: bool = True,
+    ) -> bool:
+        selected_model_file = str(model_file or "").strip()
+        model_path = (
+            Path(selected_model_file).expanduser()
+            if selected_model_file
+            else bundled_model_file()
+        )
+        try:
+            model, loaded_model_file = load_yolo_model(model_path)
+        except (OSError, RuntimeError) as exc:
+            self.ai_model_error = str(exc)
+            if log_result:
+                self.system_log_received.emit(self.ai_model_error)
+            return False
+
+        self._activate_ai_model(
+            model,
+            loaded_model_file,
+            log_result,
+        )
+        save_yolo_model_file(
+            None
+            if loaded_model_file.resolve()
+            == bundled_model_file().resolve()
+            else loaded_model_file
+        )
         return True
 
     def set_nir_model_path(self, model_path, log_result=True):
@@ -1516,8 +1595,9 @@ class Dashboard(QWidget):
                 )
         return True
 
-    def render_camera_frame(self, frame):
-        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    def render_camera_frame(self, frame, rotate=True):
+        if rotate:
+            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width, channel = rgb_frame.shape
         bytes_per_line = channel * width

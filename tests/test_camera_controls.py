@@ -24,6 +24,22 @@ class CameraControlTests(unittest.TestCase):
     def setUpClass(cls):
         cls.application = QApplication.instance() or QApplication([])
 
+    def test_dashboard_defaults_to_640_by_480_camera_stream(self):
+        with patch("GUI.dashboard.load_yolo_model", return_value=(None, None)):
+            with patch.object(Dashboard, "update_arduino_status"):
+                dashboard = Dashboard()
+        self.addCleanup(dashboard.close)
+        dashboard.arduino_timer.stop()
+
+        self.assertEqual(
+            dashboard.camera_stream_overrides[cv2.CAP_PROP_FRAME_WIDTH],
+            640,
+        )
+        self.assertEqual(
+            dashboard.camera_stream_overrides[cv2.CAP_PROP_FRAME_HEIGHT],
+            480,
+        )
+
     def test_camera_properties_are_applied_and_unsupported_controls_reported(self):
         class FakeCapture:
             def __init__(self):
@@ -78,7 +94,7 @@ class CameraControlTests(unittest.TestCase):
             def release(self):
                 pass
 
-        with patch("GUI.dashboard.get_configured_ai_model_path", return_value=""):
+        with patch("GUI.dashboard.load_yolo_model", return_value=(None, None)):
             with patch.object(Dashboard, "update_arduino_status"):
                 dashboard = Dashboard()
         self.addCleanup(dashboard.close)
@@ -105,7 +121,7 @@ class CameraControlTests(unittest.TestCase):
         self.assertEqual(capture.values[cv2.CAP_PROP_FPS], 60)
 
     def test_dashboard_rotates_camera_preview_to_portrait_orientation(self):
-        with patch("GUI.dashboard.get_configured_ai_model_path", return_value=""):
+        with patch("GUI.dashboard.load_yolo_model", return_value=(None, None)):
             with patch.object(Dashboard, "update_arduino_status"):
                 dashboard = Dashboard()
         self.addCleanup(dashboard.close)
@@ -148,6 +164,25 @@ class CameraControlTests(unittest.TestCase):
         page.set_final_result("FOREIGN OBJECT")
         self.assertEqual(page.final_result, "UNDEFINED")
 
+    def test_camera_uses_strongest_class_without_confidence_cutoff(self):
+        class FakeBox:
+            def __init__(self, confidence, class_id):
+                self.conf = [confidence]
+                self.cls = [class_id]
+
+        class FakeResult:
+            names = {0: "good", 1: "foreign object"}
+            boxes = [FakeBox(0.4, 0), FakeBox(0.2, 1)]
+
+        page = CameraPage()
+        self.addCleanup(page.close)
+        page.model = object()
+
+        detection = page.select_detection(FakeResult())
+
+        self.assertEqual(detection[1], "GOOD")
+        self.assertEqual(detection[0], 0.4)
+
     def test_admin_camera_preview_rotates_to_portrait_orientation(self):
         page = CameraPage()
         self.addCleanup(page.close)
@@ -171,7 +206,7 @@ class CameraControlTests(unittest.TestCase):
             def release(self):
                 pass
 
-        with patch("GUI.dashboard.get_configured_ai_model_path", return_value=""):
+        with patch("GUI.dashboard.load_yolo_model", return_value=(None, None)):
             with patch.object(Dashboard, "update_arduino_status"):
                 dashboard = Dashboard()
         self.addCleanup(dashboard.close)
@@ -217,7 +252,7 @@ class CameraControlTests(unittest.TestCase):
             def release(self):
                 pass
 
-        with patch("GUI.dashboard.get_configured_ai_model_path", return_value=""):
+        with patch("GUI.dashboard.load_yolo_model", return_value=(None, None)):
             with patch.object(Dashboard, "update_arduino_status"):
                 dashboard = Dashboard()
         self.addCleanup(dashboard.close)
@@ -276,7 +311,7 @@ class CameraControlTests(unittest.TestCase):
             def release(self):
                 self.released = True
 
-        with patch("GUI.dashboard.get_configured_ai_model_path", return_value=""):
+        with patch("GUI.dashboard.load_yolo_model", return_value=(None, None)):
             with patch.object(Dashboard, "update_arduino_status"):
                 dashboard = Dashboard()
         self.addCleanup(dashboard.close)
@@ -443,7 +478,6 @@ class CameraControlTests(unittest.TestCase):
 
             def __init__(self):
                 self.ai_model = None
-                self.ai_model_path = ""
                 self.last_frame = np.zeros((8, 8, 3), dtype=np.uint8)
                 self.last_ai_result = None
                 self.last_ai_frame = None
@@ -453,7 +487,6 @@ class CameraControlTests(unittest.TestCase):
         self.addCleanup(page.close)
         model = object()
         controller.ai_model = model
-        controller.ai_model_path = "model.pt"
         controller.last_ai_frame = np.full(
             (8, 8, 3),
             255,
@@ -463,7 +496,6 @@ class CameraControlTests(unittest.TestCase):
         page.update_camera_feed()
 
         self.assertIs(page.model, model)
-        self.assertEqual(page.model_path, "model.pt")
         self.assertTrue(np.all(page.last_frame == 255))
 
     def test_admin_full_view_renders_dashboard_ai_frame(self):
@@ -480,7 +512,6 @@ class CameraControlTests(unittest.TestCase):
 
             def __init__(self):
                 self.ai_model = object()
-                self.ai_model_path = "model.pt"
                 self.last_frame = np.zeros((8, 8, 3), dtype=np.uint8)
                 self.last_ai_result = FakeResult()
                 self.last_ai_frame = np.full(
@@ -507,7 +538,6 @@ class CameraControlTests(unittest.TestCase):
     def test_full_view_refresh_prefers_dashboard_annotated_frame(self):
         class FakeController:
             ai_model = object()
-            ai_model_path = "model.pt"
             last_ai_frame = np.zeros((8, 8, 3), dtype=np.uint8)
 
         page = CameraPage(camera_controller=FakeController())
@@ -596,7 +626,9 @@ class CameraControlTests(unittest.TestCase):
         self.assertTrue(page.focus_slider.isEnabled())
         self.assertTrue(page.exposure_slider.isEnabled())
         self.assertTrue(page.white_balance_slider.isEnabled())
-        self.assertEqual(page.resolution_selector.currentText(), "360P")
+        self.assertEqual(page.resolution_selector.currentText(), "480P")
+        self.assertEqual(CAMERA_RESOLUTIONS["480P"], (640, 480))
+        self.assertEqual(CAMERA_RESOLUTIONS["720P"], (1280, 720))
         self.assertEqual(page.fps_selector.currentText(), "30")
         self.assertEqual(
             page.resolution_selector.count(),

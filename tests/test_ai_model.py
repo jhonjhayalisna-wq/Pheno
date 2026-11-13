@@ -7,42 +7,132 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import cv2
 import numpy as np
 from PySide6.QtWidgets import QApplication, QLabel
 
-from GUI.ai_model import resolve_model_file
+from GUI.ai_model import (
+    bundled_model_file,
+    configured_yolo_model_file,
+    draw_yolo_detections,
+    load_yolo_model,
+    prepare_yolo_frame,
+)
 from GUI.animated_button import AnimatedButton
 from GUI.dashboard import Dashboard
 from GUI.settings import SettingsPage
 
 
 class AiModelPathTests(unittest.TestCase):
-    def test_model_folder_resolves_preferred_model_weights(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            folder = Path(temp_dir)
-            other_model = folder / "other.pt"
-            preferred_model = folder / "my_model.pt"
-            other_model.touch()
-            preferred_model.touch()
+    def test_loader_uses_the_selected_weights(self):
+        self.assertTrue(bundled_model_file().is_file())
+        load_yolo_model.cache_clear()
+        try:
+            with patch("GUI.ai_model._yolo") as yolo:
+                model, model_file = load_yolo_model(bundled_model_file())
 
-            self.assertEqual(
-                resolve_model_file(folder),
-                preferred_model,
+            self.assertIs(model, yolo.return_value)
+            self.assertEqual(model_file, bundled_model_file())
+            yolo.assert_called_once_with(
+                str(bundled_model_file()),
+                task="detect",
             )
+        finally:
+            load_yolo_model.cache_clear()
 
-    def test_model_folder_requires_explicit_path_if_weights_are_ambiguous(self):
+    def test_loader_uses_configured_weights_when_no_path_is_given(self):
+        selected_model = bundled_model_file()
+        load_yolo_model.cache_clear()
+        try:
+            with patch(
+                "GUI.ai_model.configured_yolo_model_file",
+                return_value=selected_model,
+            ):
+                with patch("GUI.ai_model._yolo") as yolo:
+                    model, model_file = load_yolo_model()
+
+            self.assertIs(model, yolo.return_value)
+            self.assertEqual(model_file, selected_model)
+            yolo.assert_called_once_with(
+                str(selected_model),
+                task="detect",
+            )
+        finally:
+            load_yolo_model.cache_clear()
+
+    def test_yolo_frame_rotates_without_cropping_or_resizing(self):
+        source = np.zeros((240, 320, 3), dtype=np.uint8)
+        source[40:80, 20:60] = (255, 0, 0)
+
+        prepared = prepare_yolo_frame(source)
+
+        self.assertEqual(prepared.shape, (320, 240, 3))
+        np.testing.assert_array_equal(
+            prepared,
+            cv2.rotate(source, cv2.ROTATE_90_COUNTERCLOCKWISE),
+        )
+
+    def test_loader_reports_a_missing_selected_model(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            folder = Path(temp_dir)
-            (folder / "first.pt").touch()
-            (folder / "second.pt").touch()
+            missing_model = Path(temp_dir) / "my_model.pt"
+            load_yolo_model.cache_clear()
+            with patch("GUI.ai_model._yolo"):
+                with patch(
+                    "GUI.ai_model.bundled_model_file",
+                    return_value=missing_model,
+                ):
+                    with self.assertRaisesRegex(
+                        FileNotFoundError,
+                        "AI model file is missing",
+                    ):
+                        load_yolo_model(missing_model)
+            load_yolo_model.cache_clear()
 
-            with self.assertRaisesRegex(ValueError, "Multiple .pt"):
-                resolve_model_file(folder)
+    def test_yolo_renderer_draws_all_confidences_and_box_style(self):
+        class FakeTensor:
+            def __init__(self, value):
+                self.value = np.asarray(value)
 
-    def test_model_folder_without_weights_reports_error(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with self.assertRaisesRegex(FileNotFoundError, "No .pt"):
-                resolve_model_file(temp_dir)
+            def cpu(self):
+                return self
+
+            def numpy(self):
+                return self.value
+
+            def squeeze(self):
+                return self.value.squeeze()
+
+            def item(self):
+                return float(self.value)
+
+        class FakeBox:
+            def __init__(self, confidence, class_id, coordinates):
+                self.conf = FakeTensor(confidence)
+                self.cls = FakeTensor(class_id)
+                self.xyxy = FakeTensor([coordinates])
+
+        class FakeResult:
+            boxes = [
+                FakeBox(0.25, 0, (5, 10, 25, 30)),
+                FakeBox(0.5, 1, (30, 10, 50, 30)),
+            ]
+
+        with patch("GUI.ai_model.cv2.rectangle") as rectangle:
+            with patch("GUI.ai_model.cv2.putText") as put_text:
+                count = draw_yolo_detections(
+                    np.zeros((480, 640, 3), dtype=np.uint8),
+                    FakeResult(),
+                    {0: "broken", 1: "good"},
+                )
+
+        self.assertEqual(count, 2)
+        self.assertEqual(rectangle.call_count, 4)
+        self.assertEqual(
+            rectangle.call_args_list[0].args[1:],
+            ((5, 10), (25, 30), (164, 120, 87), 2),
+        )
+        self.assertEqual(put_text.call_count, 2)
+        self.assertEqual(put_text.call_args_list[0].args[1], "broken: 25%")
 
 
 class AiModelIntegrationTests(unittest.TestCase):
@@ -50,11 +140,11 @@ class AiModelIntegrationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.application = QApplication.instance() or QApplication([])
 
-    def test_settings_save_loads_and_persists_ai_folder_path(self):
+    def test_settings_allows_selecting_an_ai_model_path(self):
         class FakeController:
             camera_usage_enabled = True
-            ai_model_path = ""
             ai_model_error = ""
+            selected_model_path = None
 
             def set_camera_usage_button(self, _button):
                 pass
@@ -62,24 +152,23 @@ class AiModelIntegrationTests(unittest.TestCase):
             def set_camera_usage_enabled(self, _enabled):
                 pass
 
-            def set_ai_model_path(self, model_path):
-                self.configured_path = model_path
+            def set_ai_model_file(self, model_path):
+                self.selected_model_path = model_path
                 return True
 
         controller = FakeController()
         page = SettingsPage(camera_controller=controller)
-        page.ai_model_path_input.setText(r"C:\models\PHENO AI")
         save_button = page.findChild(AnimatedButton, "settings_save_button")
+        save_button.click()
 
-        with patch("GUI.settings.save_configured_ai_model_path") as save_path:
-            save_button.click()
-
-        self.assertEqual(controller.configured_path, r"C:\models\PHENO AI")
-        save_path.assert_called_once_with(r"C:\models\PHENO AI")
-        self.assertEqual(page.saved_ai_model_path, r"C:\models\PHENO AI")
+        self.assertTrue(hasattr(page, "ai_model_path_input"))
+        self.assertEqual(
+            controller.selected_model_path,
+            str(configured_yolo_model_file()),
+        )
         self.assertEqual(
             page.findChild(QLabel, "settings_save_state").text(),
-            "Settings saved; AI model ready",
+            "Settings saved",
         )
         page.port_refresh_timer.stop()
         page.close()
@@ -90,20 +179,20 @@ class AiModelIntegrationTests(unittest.TestCase):
                 return True
 
             def read(self):
-                return True, np.zeros((360, 640, 3), dtype=np.uint8)
+                frame = np.zeros((360, 640, 3), dtype=np.uint8)
+                frame[30:90, 40:100] = (0, 0, 255)
+                return True, frame
 
             def release(self):
                 pass
 
         class FakeResult:
-            def __init__(self):
-                self.plotted = False
-
-            def plot(self, img=None):
-                self.plotted = True
-                return np.full_like(img, 255)
+            boxes = []
+            names = {}
 
         class FakeModel:
+            names = {}
+
             def __init__(self, result):
                 self.result = result
                 self.started = Event()
@@ -118,14 +207,17 @@ class AiModelIntegrationTests(unittest.TestCase):
 
         result = FakeResult()
         model = FakeModel(result)
-        with patch("GUI.dashboard.get_configured_ai_model_path", return_value=""):
+        with patch(
+            "GUI.dashboard.load_yolo_model",
+            return_value=(None, bundled_model_file()),
+        ):
             with patch.object(Dashboard, "update_arduino_status"):
                 dashboard = Dashboard()
         with patch(
             "GUI.dashboard.load_yolo_model",
             return_value=(model, Path("PHENO AI") / "my_model.pt"),
         ):
-            self.assertTrue(dashboard.set_ai_model_path("PHENO AI"))
+            self.assertTrue(dashboard.load_ai_model())
 
         dashboard.camera_capture = FakeCapture()
         dashboard.camera_enabled = True
@@ -139,15 +231,18 @@ class AiModelIntegrationTests(unittest.TestCase):
         self.application.processEvents()
         dashboard.update_camera_feed()
 
-        self.assertTrue(result.plotted)
-        self.assertEqual(model.kwargs, {"conf": 0.5, "verbose": False})
-        self.assertEqual(model.frame.shape, (360, 640, 3))
-        self.assertIsNotNone(dashboard.camera_frame.pixmap())
-        self.assertEqual(
-            dashboard.last_ai_frame[0, 0].tolist(),
-            [255, 255, 255],
+        source_frame = np.zeros((360, 640, 3), dtype=np.uint8)
+        source_frame[30:90, 40:100] = (0, 0, 255)
+        expected_input = cv2.rotate(
+            source_frame,
+            cv2.ROTATE_90_COUNTERCLOCKWISE,
         )
-        self.assertEqual(dashboard.last_ai_frame.shape, (360, 640, 3))
+        self.assertEqual(model.kwargs, {"verbose": False, "conf": 0.35})
+        self.assertEqual(model.frame.shape, (640, 360, 3))
+        np.testing.assert_array_equal(model.frame, expected_input)
+        self.assertIsNotNone(dashboard.camera_frame.pixmap())
+        self.assertEqual(dashboard.last_ai_frame.shape, (640, 360, 3))
+        self.assertTrue(np.any(dashboard.last_ai_frame != 0))
         dashboard.stop_camera()
         dashboard.arduino_timer.stop()
         dashboard.close()
@@ -163,15 +258,10 @@ class AiModelIntegrationTests(unittest.TestCase):
             def release(self):
                 pass
 
-        class FakeResult:
-            def __init__(self):
-                self.plot_calls = 0
-
-            def plot(self, img=None):
-                self.plot_calls += 1
-                return np.full_like(img, 255)
-
-        with patch("GUI.dashboard.get_configured_ai_model_path", return_value=""):
+        with patch(
+            "GUI.dashboard.load_yolo_model",
+            return_value=(None, bundled_model_file()),
+        ):
             with patch.object(Dashboard, "update_arduino_status"):
                 dashboard = Dashboard()
 
@@ -179,23 +269,50 @@ class AiModelIntegrationTests(unittest.TestCase):
         dashboard.camera_enabled = True
         dashboard.ai_model = object()
         dashboard.ai_inference_busy = True
-        dashboard.last_ai_result = FakeResult()
+        dashboard.last_ai_result = object()
         dashboard.last_ai_frame = np.full(
             (32, 32, 3),
             123,
             dtype=np.uint8,
         )
         rendered_frames = []
-        dashboard.render_camera_frame = lambda frame: rendered_frames.append(
-            frame.copy()
+        dashboard.render_camera_frame = (
+            lambda frame, **_kwargs: rendered_frames.append(frame.copy())
         )
 
         dashboard.update_camera_feed()
 
         self.assertEqual(len(rendered_frames), 1)
         self.assertTrue(np.all(rendered_frames[0] == 123))
-        self.assertEqual(dashboard.last_ai_result.plot_calls, 0)
+        self.assertIsNotNone(dashboard.last_ai_result)
         dashboard.stop_camera()
+        dashboard.arduino_timer.stop()
+        dashboard.close()
+
+    def test_dashboard_renders_yolo_frame_without_rotating(self):
+        with patch(
+            "GUI.dashboard.load_yolo_model",
+            return_value=(None, bundled_model_file()),
+        ):
+            with patch.object(Dashboard, "update_arduino_status"):
+                dashboard = Dashboard()
+
+        rendered_frames = []
+        dashboard.render_camera_frame = (
+            lambda frame, **kwargs: rendered_frames.append(
+                (frame.copy(), kwargs["rotate"])
+            )
+        )
+        dashboard._on_ai_inference_completed(
+            dashboard.ai_inference_token,
+            None,
+            np.zeros((480, 640, 3), dtype=np.uint8),
+            "",
+        )
+
+        self.assertEqual(len(rendered_frames), 1)
+        self.assertEqual(rendered_frames[0][0].shape, (480, 640, 3))
+        self.assertFalse(rendered_frames[0][1])
         dashboard.arduino_timer.stop()
         dashboard.close()
 
@@ -207,9 +324,12 @@ class AiModelIntegrationTests(unittest.TestCase):
 
         class FakeResult:
             names = {0: "good", 1: "insect_damaged"}
-            boxes = [FakeBox(0.75, 0), FakeBox(0.91, 1)]
+            boxes = [            FakeBox(0.25, 0), FakeBox(0.91, 1)]
 
-        with patch("GUI.dashboard.get_configured_ai_model_path", return_value=""):
+        with patch(
+            "GUI.dashboard.load_yolo_model",
+            return_value=(None, bundled_model_file()),
+        ):
             with patch.object(Dashboard, "update_arduino_status"):
                 dashboard = Dashboard()
 
@@ -226,6 +346,31 @@ class AiModelIntegrationTests(unittest.TestCase):
             "UNDEFINED",
         )
         self.assertEqual(dashboard.quality_value.text(), "UNDEFINED")
+        dashboard.arduino_timer.stop()
+        dashboard.close()
+
+    def test_dashboard_accepts_low_confidence_and_prefers_strongest_class(self):
+        class FakeBox:
+            def __init__(self, confidence, class_id):
+                self.conf = [confidence]
+                self.cls = [class_id]
+
+        class FakeResult:
+            names = {0: "good", 1: "foreign object"}
+            boxes = [FakeBox(0.4, 0), FakeBox(0.2, 1)]
+
+        with patch(
+            "GUI.dashboard.load_yolo_model",
+            return_value=(None, bundled_model_file()),
+        ):
+            with patch.object(Dashboard, "update_arduino_status"):
+                dashboard = Dashboard()
+
+        self.assertEqual(
+            dashboard.update_quality_from_ai_result(FakeResult()),
+            "GOOD",
+        )
+        self.assertEqual(dashboard.last_quality_confidence, 0.4)
         dashboard.arduino_timer.stop()
         dashboard.close()
 
@@ -258,7 +403,10 @@ class AiModelIntegrationTests(unittest.TestCase):
             "INSECT-DAMAGED",
             "MOLDY",
         )
-        with patch("GUI.dashboard.get_configured_ai_model_path", return_value=""):
+        with patch(
+            "GUI.dashboard.load_yolo_model",
+            return_value=(None, bundled_model_file()),
+        ):
             with patch.object(Dashboard, "update_arduino_status"):
                 dashboard = Dashboard()
 
@@ -286,7 +434,10 @@ class AiModelIntegrationTests(unittest.TestCase):
             def __init__(self):
                 self.boxes[1].cls = [1]
 
-        with patch("GUI.dashboard.get_configured_ai_model_path", return_value=""):
+        with patch(
+            "GUI.dashboard.load_yolo_model",
+            return_value=(None, bundled_model_file()),
+        ):
             with patch.object(Dashboard, "update_arduino_status"):
                 dashboard = Dashboard()
 

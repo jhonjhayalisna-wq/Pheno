@@ -46,14 +46,12 @@ over Serial1. The dashboard's existing camera stream supplies each bean's
 classification. See [ARDUINO_SETUP.md](./ARDUINO_SETUP.md) for pin assignments,
 upload steps, and the required load-cell calibration.
 
-To enable live AI detections, open **System Settings**, enter the path to the
-folder containing the model weights (for example, the `PHENO AI` folder with
-`my_model.pt`) or enter the `.pt` file path directly, then select **SAVE
-SETTINGS**. The model is loaded into the shared camera stream, annotated
-detections appear on the main dashboard's **Live Camera**, and the selected
-model path is remembered for later launches. If a folder contains multiple
-`.pt` files, use the full path to the intended model file. An invalid or
-unloadable model is reported in System Settings and the admin process log.
+The bundled `models/my_model.pt` detector loads automatically for live camera
+inference; no model path needs to be configured. It displays the detector's
+640x480 output after the same 90-degree rotation as the supplied YOLO detection
+script, including its bounding-box colors, confidence labels, FPS, and object
+count. A missing or unloadable bundled model is reported in System Settings
+and the admin process log.
 
 NIR bean classification uses the bundled
 `NIR/models/svm_lda_nir_model.pkl`; it averages three AS7265X scans and displays

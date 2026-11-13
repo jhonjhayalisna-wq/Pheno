@@ -1,8 +1,25 @@
-from PySide6.QtCore import Qt, QTimer, Signal
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtMultimedia import QMediaDevices
-from PySide6.QtWidgets import QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, QFrame, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QFrame,
+    QVBoxLayout,
+    QWidget,
+)
 from .animated_button import AnimatedButton
-from .ai_model import get_configured_ai_model_path, save_configured_ai_model_path
+from .ai_model import (
+    bundled_model_file,
+    configured_yolo_model_file,
+    save_yolo_model_file,
+)
 
 try:
     from serial.tools import list_ports
@@ -11,18 +28,11 @@ except ImportError:
 
 
 class SettingsPage(QWidget):
-    ai_model_path_changed = Signal()
-
     def __init__(self, camera_controller=None, permission_check=None):
         super().__init__()
         self.setObjectName("settings_page")
         self.camera_controller = camera_controller
         self.permission_check = permission_check
-        self.saved_ai_model_path = getattr(
-            camera_controller,
-            "ai_model_path",
-            get_configured_ai_model_path(),
-        )
         self.setup_ui()
         self.arduino_port_input.currentIndexChanged.connect(
             self._select_arduino_port
@@ -162,13 +172,16 @@ class SettingsPage(QWidget):
         camera_input.setReadOnly(True)
         self.camera_source_input = camera_input
         add_centered_form_row(connection_form, "Camera source", camera_input)
-        model_input = QLineEdit()
-        model_input.setPlaceholderText(
-            "Path to AI folder or .pt model file"
-        )
-        model_input.setText(self.saved_ai_model_path)
-        self.ai_model_path_input = model_input
-        add_centered_form_row(connection_form, "AI model path", model_input)
+        model_path_input = QLineEdit(str(configured_yolo_model_file()))
+        model_path_input.setReadOnly(True)
+        self.ai_model_path_input = model_path_input
+        model_path_row = QHBoxLayout()
+        model_path_row.addWidget(model_path_input)
+        browse_model_button = AnimatedButton("BROWSE")
+        browse_model_button.setObjectName("ai_model_browse_button")
+        browse_model_button.clicked.connect(self._browse_ai_model_file)
+        model_path_row.addWidget(browse_model_button)
+        add_centered_form_row(connection_form, "YOLO model weights", model_path_row)
         connection_panel = QFrame()
         connection_panel.setObjectName("settings_panel")
         connection_panel.setLayout(connection_form)
@@ -213,7 +226,6 @@ class SettingsPage(QWidget):
                 save_state.setText("Administrator access required")
                 return
             self.refresh_live_settings()
-            model_input.clear()
             weight_input.setValue(0)
             moisture_input.setValue(0)
             save_state.setText("Settings reset")
@@ -222,31 +234,43 @@ class SettingsPage(QWidget):
             if self.permission_check is not None and not self.permission_check():
                 save_state.setText("Administrator access required")
                 return
-            model_path = model_input.text().strip()
-            configure_model = getattr(
-                self.camera_controller,
-                "set_ai_model_path",
-                None,
-            )
-            if configure_model is not None and not configure_model(model_path):
-                save_state.setText(
-                    f"AI model not ready: "
-                    f"{self.camera_controller.ai_model_error}"
+            model_path = self.ai_model_path_input.text().strip()
+            if self.camera_controller is not None:
+                set_model_file = getattr(
+                    self.camera_controller,
+                    "set_ai_model_file",
+                    None,
                 )
-                return
-            try:
-                save_configured_ai_model_path(model_path)
-            except OSError as exc:
-                save_state.setText(f"Could not save AI model path: {exc}")
-                return
-
-            self.saved_ai_model_path = model_path
-            save_state.setText(
-                "Settings saved"
-                if not model_path
-                else "Settings saved; AI model ready"
-            )
-            self.ai_model_path_changed.emit()
+                if set_model_file is not None:
+                    if not set_model_file(model_path):
+                        save_state.setText(
+                            "AI model not loaded: "
+                            f"{self.camera_controller.ai_model_error}"
+                        )
+                        return
+                else:
+                    save_state.setText(
+                        "AI model selection is unavailable."
+                    )
+                    return
+            else:
+                selected_model = (
+                    Path(model_path).expanduser()
+                    if model_path
+                    else bundled_model_file()
+                )
+                if not selected_model.is_file():
+                    save_state.setText(
+                        f"AI model file not found: {selected_model}"
+                    )
+                    return
+                save_yolo_model_file(
+                    None
+                    if selected_model.resolve()
+                    == bundled_model_file().resolve()
+                    else selected_model
+                )
+            save_state.setText("Settings saved")
 
         reset_button.clicked.connect(reset_settings)
         save_button.clicked.connect(save_settings)
@@ -255,3 +279,15 @@ class SettingsPage(QWidget):
         actions.addWidget(save_button)
         layout.addLayout(actions)
         layout.addStretch()
+
+    def _browse_ai_model_file(self) -> None:
+        current_path = self.ai_model_path_input.text().strip()
+        start_path = current_path or str(bundled_model_file())
+        model_file, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Select YOLO model weights",
+            start_path,
+            "YOLO weights (*.pt);;All files (*)",
+        )
+        if model_file:
+            self.ai_model_path_input.setText(model_file)

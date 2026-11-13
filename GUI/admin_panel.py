@@ -594,9 +594,6 @@ class AdminControlPanel(QMainWindow):
             self.dashboard,
             permission_check=lambda: self.session.is_admin,
         )
-        self.settings_page.ai_model_path_changed.connect(
-            self.camera_page.use_dashboard_model
-        )
         self.history_page = HistoryPage()
         pages = [
             SystemOverviewPage(self.dashboard),

@@ -1,5 +1,6 @@
 from collections import Counter, deque
 from time import perf_counter
+from typing import Any
 
 import cv2
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
@@ -20,7 +21,13 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 from .animated_button import AnimatedButton
-from .ai_model import load_yolo_model
+from .ai_model import (
+    YOLO_CONFIDENCE_THRESHOLD,
+    draw_yolo_detections,
+    draw_yolo_status,
+    load_yolo_model,
+    prepare_yolo_frame,
+)
 from .camera_controls import (
     CAMERA_CONTROL_DEFAULTS,
     CAMERA_FRAME_RATES,
@@ -31,7 +38,6 @@ from .camera_controls import (
 from .quality import normalize_quality_category
 
 
-CONFIDENCE_THRESHOLD = 0.50
 STABILITY_WINDOW = 5
 
 
@@ -39,11 +45,10 @@ class CameraPage(QWidget):
     final_result_changed = Signal(str)
     EMEET_CAMERA_INDEX = 0
 
-    def __init__(self, camera_source=EMEET_CAMERA_INDEX, model_path=None, camera_controller=None):
+    def __init__(self, camera_source=EMEET_CAMERA_INDEX, camera_controller=None):
         super().__init__()
         self.setObjectName("camera_page")
         self.camera_source = camera_source
-        self.model_path = model_path
         self.camera_controller = camera_controller
         self.camera_capture = None
         self.local_camera_controls = CAMERA_CONTROL_DEFAULTS.copy()
@@ -80,9 +85,8 @@ class CameraPage(QWidget):
             camera_controller, "ai_model", None
         ) is not None:
             self.model = camera_controller.ai_model
-            self.model_path = camera_controller.ai_model_path
-        else:
-            self.load_model(model_path)
+        elif camera_controller is None:
+            self.load_model()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -168,7 +172,7 @@ class CameraPage(QWidget):
         self.resolution_selector = QComboBox()
         self.resolution_selector.setObjectName("camera_resolution_selector")
         self.resolution_selector.addItems(list(CAMERA_RESOLUTIONS))
-        self.resolution_selector.setCurrentText("360P")
+        self.resolution_selector.setCurrentText("480P")
         resolution_row.addStretch()
         resolution_row.addWidget(self.resolution_selector)
         lens_layout.addLayout(resolution_row)
@@ -659,7 +663,7 @@ class CameraPage(QWidget):
             if ai_frame is not None:
                 frame = ai_frame
         if frame is not None:
-            self.render_frame(frame)
+            self.render_frame(frame, rotate=self.model is None)
 
     def _clear_full_view(self, _result):
         self.full_view_timer.stop()
@@ -683,20 +687,8 @@ class CameraPage(QWidget):
         for property_id, value in self._camera_controls_for_start().items():
             self._set_camera_control(property_id, value)
 
-    def load_model(self, model_path=None):
-        if not model_path:
-            return
-        self.model, model_file = load_yolo_model(model_path)
-        self.model_path = str(model_file)
-
-    def use_dashboard_model(self):
-        if self.camera_controller is not None:
-            self.model = getattr(self.camera_controller, "ai_model", None)
-            self.model_path = getattr(
-                self.camera_controller,
-                "ai_model_path",
-                "",
-            )
+    def load_model(self):
+        self.model, _model_file = load_yolo_model()
 
     def _camera_controls_for_start(self):
         controls = self.camera_control_values.copy()
@@ -818,7 +810,7 @@ class CameraPage(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if self.last_frame is not None:
-            self.render_frame(self.last_frame)
+            self.render_frame(self.last_frame, rotate=self.model is None)
 
     def set_final_result(self, result):
         normalized = normalize_quality_category(result)
@@ -831,16 +823,16 @@ class CameraPage(QWidget):
         self.camera_result_label.setText(f"CAMERA RESULT: {self.final_result}")
         self.final_result_changed.emit(self.final_result)
 
-    def select_detection(self, result):
+    def select_detection(
+        self,
+        result: Any,
+    ) -> tuple[float, str, Any] | None:
         if self.model is None or result is None or not result.boxes:
             return None
         names = result.names if hasattr(result, "names") else {}
-        candidates = []
-        foreign_candidates = []
+        candidates: list[tuple[float, str, Any]] = []
         for box in result.boxes:
             confidence = float(box.conf[0])
-            if confidence < CONFIDENCE_THRESHOLD:
-                continue
             class_id = int(box.cls[0])
             if isinstance(names, dict):
                 raw_name = names.get(class_id, str(class_id))
@@ -849,13 +841,20 @@ class CameraPage(QWidget):
             else:
                 raw_name = str(class_id)
             normalized = normalize_quality_category(raw_name)
-            if normalized is None:
-                foreign_candidates.append((confidence, "UNDEFINED", box))
-            else:
-                candidates.append((confidence, normalized, box))
-        if foreign_candidates:
-            return max(foreign_candidates, key=lambda item: item[0])
-        return max(candidates, key=lambda item: item[0]) if candidates else None
+            candidates.append(
+                (confidence, normalized or "UNDEFINED", box)
+            )
+        return (
+            max(
+                candidates,
+                key=lambda item: (
+                    item[0],
+                    item[1] == "UNDEFINED",
+                ),
+            )
+            if candidates
+            else None
+        )
 
     def update_detection(self, result):
         previous_detection = self.last_detection
@@ -889,11 +888,6 @@ class CameraPage(QWidget):
             if controller_model is not self.model:
                 self.model = controller_model
                 self.last_controller_ai_frame = None
-                self.model_path = getattr(
-                    self.camera_controller,
-                    "ai_model_path",
-                    "",
-                )
             frame = self.camera_controller.last_frame
             if frame is None:
                 return
@@ -927,19 +921,25 @@ class CameraPage(QWidget):
             self.update_camera_metrics()
 
         if self.camera_controller is None and self.model is not None:
-            results = self.model(frame, verbose=False)
+            frame = prepare_yolo_frame(frame)
+            results = self.model(
+                frame,
+                verbose=False,
+                conf=YOLO_CONFIDENCE_THRESHOLD,
+            )
             result = results[0] if results else None
             self.update_detection(result)
-            if self.last_detection is not None:
-                _, label, box = self.last_detection
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (46, 125, 79), 2)
-                cv2.putText(frame, label, (x1, max(y1 - 10, 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (46, 125, 79), 2)
+            object_count = draw_yolo_detections(
+                frame,
+                result,
+                self.model.names,
+            )
+            draw_yolo_status(frame, self.fps, object_count)
         elif self.camera_controller is None:
             self.update_detection(None)
 
         self.last_frame = frame.copy()
-        self.render_frame(frame)
+        self.render_frame(frame, rotate=self.model is None)
 
     def update_camera_metrics(self):
         self.fps_label.setText(f"{self.fps:.1f}")
@@ -962,8 +962,9 @@ class CameraPage(QWidget):
         self.bean_id_label.setText(bean_id)
         self.bean_count_label.setText(str(bean_count))
 
-    def render_frame(self, frame):
-        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+    def render_frame(self, frame, rotate=True):
+        if rotate:
+            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width, channels = rgb_frame.shape
         image = QImage(rgb_frame.data, width, height, channels * width, QImage.Format.Format_RGB888)

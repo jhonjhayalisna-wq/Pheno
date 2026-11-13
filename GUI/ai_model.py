@@ -1,68 +1,169 @@
+from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
+import cv2
+import numpy as np
 from PySide6.QtCore import QSettings
 
 try:
-    from ultralytics import YOLO
+    from ultralytics import YOLO as _yolo
 except ImportError:
-    YOLO = None
+    _yolo = None
 
 
-def get_configured_ai_model_path():
-    settings = QSettings("PhenoCoater", "PhenoCoater")
-    return str(settings.value("ai/model_path", "") or "")
+YOLO_SETTINGS_ORGANIZATION = "PhenoCoater"
+YOLO_SETTINGS_APPLICATION = "PhenoCoater"
+YOLO_MODEL_SETTINGS_KEY = "ai/model_file"
+YOLO_CONFIDENCE_THRESHOLD = 0.35
+YOLO_BOX_COLORS = (
+    (164, 120, 87),
+    (68, 148, 228),
+    (93, 97, 209),
+    (178, 182, 133),
+    (88, 159, 106),
+    (96, 202, 231),
+    (159, 124, 168),
+    (169, 162, 241),
+    (98, 118, 150),
+    (172, 176, 184),
+)
 
 
-def save_configured_ai_model_path(model_path):
-    settings = QSettings("PhenoCoater", "PhenoCoater")
-    if model_path:
-        settings.setValue("ai/model_path", model_path)
-    else:
-        settings.remove("ai/model_path")
-    settings.sync()
-    if settings.status() != QSettings.Status.NoError:
-        raise OSError("Could not save the AI model path.")
+def bundled_model_file() -> Path:
+    return Path(__file__).resolve().parent.parent / "models" / "my_model.pt"
 
 
-def resolve_model_file(model_path):
-    path = Path(model_path).expanduser()
-    if path.is_file():
-        return path
-    if not path.is_dir():
-        raise FileNotFoundError(f"AI model path does not exist: {path}")
-
-    model_files = sorted(
-        candidate
-        for candidate in path.iterdir()
-        if candidate.is_file() and candidate.suffix.lower() == ".pt"
+def configured_yolo_model_file() -> Path:
+    settings = QSettings(
+        YOLO_SETTINGS_ORGANIZATION,
+        YOLO_SETTINGS_APPLICATION,
     )
-    for preferred_name in ("my_model.pt", "best.pt"):
-        preferred_path = path / preferred_name
-        if preferred_path.is_file():
-            return preferred_path
-    if len(model_files) == 1:
-        return model_files[0]
-    if not model_files:
-        raise FileNotFoundError(
-            f"No .pt model weights were found in the AI folder: {path}"
+    configured_path = str(
+        settings.value(YOLO_MODEL_SETTINGS_KEY, "") or ""
+    ).strip()
+    if configured_path:
+        return Path(configured_path).expanduser()
+    return bundled_model_file()
+
+
+def save_yolo_model_file(model_file: str | Path | None) -> None:
+    settings = QSettings(
+        YOLO_SETTINGS_ORGANIZATION,
+        YOLO_SETTINGS_APPLICATION,
+    )
+    if model_file:
+        settings.setValue(
+            YOLO_MODEL_SETTINGS_KEY,
+            str(Path(model_file).expanduser().resolve()),
         )
-    raise ValueError(
-        f"Multiple .pt model files were found in {path}; enter the full path "
-        "to the model file."
-    )
+    else:
+        settings.remove(YOLO_MODEL_SETTINGS_KEY)
+    load_yolo_model.cache_clear()
 
 
-def load_yolo_model(model_path):
-    if YOLO is None:
+def prepare_yolo_frame(frame: np.ndarray) -> np.ndarray:
+    return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+
+@lru_cache(maxsize=1)
+def load_yolo_model(
+    model_file: str | Path | None = None,
+) -> tuple[Any, Path]:
+    if _yolo is None:
         raise RuntimeError(
             "Ultralytics is not installed. Install the project requirements "
             "before loading an AI model."
         )
 
-    model_file = resolve_model_file(model_path)
+    model_file = (
+        Path(model_file).expanduser()
+        if model_file is not None
+        else configured_yolo_model_file()
+    )
+    if not model_file.is_file():
+        raise FileNotFoundError(
+            f"The AI model file is missing: {model_file}"
+        )
+
     try:
-        return YOLO(str(model_file)), model_file
+        return _yolo(str(model_file), task="detect"), model_file
     except Exception as exc:
         raise RuntimeError(
             f"Could not load the AI model at {model_file}: {exc}"
         ) from exc
+
+
+def draw_yolo_detections(
+    frame: np.ndarray,
+    result: Any,
+    labels: dict[int, str],
+) -> int:
+    object_count = 0
+    detections = getattr(result, "boxes", None)
+    if detections is None:
+        return object_count
+
+    for detection in detections:
+        confidence = float(detection.conf.item())
+
+        coordinates = detection.xyxy.cpu().numpy().squeeze()
+        xmin, ymin, xmax, ymax = coordinates.astype(int)
+        class_id = int(detection.cls.item())
+        class_name = labels[class_id]
+
+        color = YOLO_BOX_COLORS[class_id % len(YOLO_BOX_COLORS)]
+        cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2)
+
+        label = f"{class_name}: {int(confidence * 100)}%"
+        label_size, baseline = cv2.getTextSize(
+            label,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            1,
+        )
+        label_ymin = max(ymin, label_size[1] + 10)
+        cv2.rectangle(
+            frame,
+            (xmin, label_ymin - label_size[1] - 10),
+            (xmin + label_size[0], label_ymin + baseline - 10),
+            color,
+            cv2.FILLED,
+        )
+        cv2.putText(
+            frame,
+            label,
+            (xmin, label_ymin - 7),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0, 0, 0),
+            1,
+        )
+        object_count += 1
+
+    return object_count
+
+
+def draw_yolo_status(
+    frame: np.ndarray,
+    frame_rate: float,
+    object_count: int,
+) -> None:
+    cv2.putText(
+        frame,
+        f"FPS: {frame_rate:0.2f}",
+        (10, 20),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 255, 255),
+        2,
+    )
+    cv2.putText(
+        frame,
+        f"Number of objects: {object_count}",
+        (10, 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 255, 255),
+        2,
+    )
