@@ -22,14 +22,12 @@ const uint16_t STEPPER_STEPS_PER_REV = 4076;
 const unsigned long STEPPER_STEP_INTERVAL_US = 1466;
 const uint32_t CALIBRATION_MAGIC = 0x50484331UL;
 
-const uint8_t IR_PIN = 2;
+const uint8_t IR_PIN = 13;
 const uint8_t SERVO1_PIN = 9;
 const uint8_t SERVO2_PIN = 10;
 const uint8_t MOTOR_PIN = 30;
-const uint8_t LOAD_CELL_1_DATA_PIN = 6;
-const uint8_t LOAD_CELL_1_CLOCK_PIN = 7;
-const uint8_t LOAD_CELL_2_DATA_PIN = 4;
-const uint8_t LOAD_CELL_2_CLOCK_PIN = 5;
+const uint8_t LOAD_CELL_1_DATA_PIN = 3;
+const uint8_t LOAD_CELL_1_CLOCK_PIN = 2;
 
 const uint8_t STEPPER_1_PINS[4] = {22, 23, 24, 25};
 const uint8_t STEPPER_2_PINS[4] = {26, 27, 28, 29};
@@ -39,7 +37,6 @@ const uint8_t STEPPER_SEQUENCE[8][4] = {
 };
 
 const uint8_t CALIBRATED_CELL_1 = 0x01;
-const uint8_t CALIBRATED_CELL_2 = 0x02;
 
 struct StepperMotor
 {
@@ -51,13 +48,15 @@ struct StepperMotor
   unsigned long lastStepAt;
 };
 
+// Keep the legacy second-cell fields so the first-cell calibration stays at
+// the same EEPROM offsets for existing installations.
 struct StoredCalibration
 {
   uint32_t magic;
   float scale1;
-  float scale2;
+  float legacyScale2;
   int32_t offset1;
-  int32_t offset2;
+  int32_t legacyOffset2;
   uint8_t flags;
 };
 
@@ -94,16 +93,12 @@ enum CalibrationStep : uint8_t
   CALIBRATION_IDLE,
   CALIBRATION_CELL_1_EMPTY,
   CALIBRATION_CELL_1_KNOWN_WEIGHT,
-  CALIBRATION_CELL_1_REMOVE_WEIGHT,
-  CALIBRATION_CELL_2_EMPTY,
-  CALIBRATION_CELL_2_KNOWN_WEIGHT,
-  CALIBRATION_CELL_2_REMOVE_WEIGHT
+  CALIBRATION_CELL_1_REMOVE_WEIGHT
 };
 
 Servo servo1;
 Servo servo2;
 HX711 loadCell1;
-HX711 loadCell2;
 StepperMotor stepper1 = {STEPPER_1_PINS, 0, false, true, 0, 0};
 StepperMotor stepper2 = {STEPPER_2_PINS, 0, false, true, 0, 0};
 
@@ -129,10 +124,8 @@ int sweepSpeed[2] = {1, 1};
 int sweepDirection[2] = {1, 1};
 unsigned long lastServoStepAt[2] = {0, 0};
 unsigned int stableWeightSamples = 0;
-float lastGoodWeightGrams = NAN;
-float lastBadWeightGrams = NAN;
+float lastWeightGrams = NAN;
 float measuredGoodWeightGrams = 0.0f;
-float measuredBadWeightGrams = 0.0f;
 uint8_t frontNirScanCount = 0;
 bool sampleActive = false;
 bool backFree = true;
@@ -184,32 +177,15 @@ void loadCalibration()
     calibration.flags &= static_cast<uint8_t>(~CALIBRATED_CELL_1);
     loadCell1.set_scale(1.0f);
   }
-  if (cellIsCalibrated(CALIBRATED_CELL_2) &&
-      isfinite(calibration.scale2) && fabs(calibration.scale2) > 0.000001f)
-  {
-    loadCell2.set_scale(calibration.scale2);
-    loadCell2.set_offset(calibration.offset2);
-  }
-  else
-  {
-    calibration.flags &= static_cast<uint8_t>(~CALIBRATED_CELL_2);
-    loadCell2.set_scale(1.0f);
-  }
   if (!cellIsCalibrated(CALIBRATED_CELL_1))
   {
     printCalibrationPrompt(
       F("LOAD CELL 1 CALIBRATION: Empty load cell 1 and send C to start.")
     );
   }
-  else if (!cellIsCalibrated(CALIBRATED_CELL_2))
-  {
-    printCalibrationPrompt(
-      F("LOAD CELL 2 CALIBRATION: Empty load cell 2 and send C to start.")
-    );
-  }
   else
   {
-    printCalibrationPrompt(F("Calibration complete: both load cells are ready."));
+    printCalibrationPrompt(F("Calibration complete: good-bean load cell is ready."));
   }
 }
 
@@ -349,8 +325,7 @@ void setBackState(BackState state)
   else if (state == BACK_WEIGH)
   {
     stableWeightSamples = 0;
-    lastGoodWeightGrams = NAN;
-    lastBadWeightGrams = NAN;
+    lastWeightGrams = NAN;
     weightErrorReported = false;
   }
 }
@@ -567,8 +542,6 @@ void printWeightReadings()
 {
   Serial.print(F("Load Cell 1: "));
   Serial.print(measuredGoodWeightGrams, 2);
-  Serial.print(F(" g | Load Cell 2: "));
-  Serial.print(measuredBadWeightGrams, 2);
   Serial.println(F(" g"));
 }
 
@@ -583,16 +556,24 @@ void BackProcess()
     case BACK_SORT:
       if (now - backStateStartedAt >= BACK_SORT_SETTLE_MS)
       {
-        setBackState(BACK_WEIGH);
+        if (backBeanClass == BEAN_GOOD)
+        {
+          setBackState(BACK_WEIGH);
+        }
+        else
+        {
+          backBeanClass = BEAN_UNDEFINED;
+          backFree = true;
+          setBackState(BACK_IDLE);
+        }
       }
       break;
     case BACK_WEIGH:
-      if (!cellIsCalibrated(CALIBRATED_CELL_1) ||
-          !cellIsCalibrated(CALIBRATED_CELL_2))
+      if (!cellIsCalibrated(CALIBRATED_CELL_1))
       {
         if (!weightErrorReported)
         {
-          Serial.println(F("ERROR: Both load cells must be calibrated before sorting."));
+          Serial.println(F("ERROR: Calibrate the good-bean load cell before sorting."));
           weightErrorReported = true;
         }
         break;
@@ -610,17 +591,11 @@ void BackProcess()
       }
       {
         float currentGood = 0.0f;
-        float currentBad = 0.0f;
         if (!readWeightGrams(
               loadCell1,
               calibration.scale1,
               calibration.offset1,
-              currentGood) ||
-            !readWeightGrams(
-              loadCell2,
-              calibration.scale2,
-              calibration.offset2,
-              currentBad))
+              currentGood))
         {
           if (!weightErrorReported)
           {
@@ -630,11 +605,8 @@ void BackProcess()
           break;
         }
         weightErrorReported = false;
-        if (isfinite(lastGoodWeightGrams) &&
-            isfinite(lastBadWeightGrams) &&
-            fabs(currentGood - lastGoodWeightGrams) <=
-              WEIGHT_STABILITY_TOLERANCE_GRAMS &&
-            fabs(currentBad - lastBadWeightGrams) <=
+        if (isfinite(lastWeightGrams) &&
+            fabs(currentGood - lastWeightGrams) <=
               WEIGHT_STABILITY_TOLERANCE_GRAMS)
         {
           stableWeightSamples++;
@@ -643,12 +615,10 @@ void BackProcess()
         {
           stableWeightSamples = 0;
         }
-        lastGoodWeightGrams = currentGood;
-        lastBadWeightGrams = currentBad;
+        lastWeightGrams = currentGood;
         if (stableWeightSamples >= 3)
         {
           measuredGoodWeightGrams = currentGood;
-          measuredBadWeightGrams = currentBad;
           setBackState(BACK_TOTAL);
         }
       }
@@ -656,7 +626,7 @@ void BackProcess()
     case BACK_TOTAL:
       printWeightReadings();
       Serial.print(F("TOTAL_WEIGHT: "));
-      Serial.print(measuredGoodWeightGrams + measuredBadWeightGrams, 2);
+      Serial.print(measuredGoodWeightGrams, 2);
       Serial.println(F(" g"));
       backBeanClass = BEAN_UNDEFINED;
       backFree = true;
@@ -704,22 +674,12 @@ void updateIrSensor()
 void startSample()
 {
   if (sampleActive) return;
-  if (!cellIsCalibrated(CALIBRATED_CELL_1) ||
-      !cellIsCalibrated(CALIBRATED_CELL_2))
+  if (!cellIsCalibrated(CALIBRATED_CELL_1))
   {
-    Serial.println(F("ERROR: Calibrate both load cells before starting a sample."));
-    if (!cellIsCalibrated(CALIBRATED_CELL_1))
-    {
-      printCalibrationPrompt(
-        F("LOAD CELL 1 CALIBRATION: Empty load cell 1 and send C to start.")
-      );
-    }
-    else
-    {
-      printCalibrationPrompt(
-        F("LOAD CELL 2 CALIBRATION: Empty load cell 2 and send C to start.")
-      );
-    }
+    Serial.println(F("ERROR: Calibrate the good-bean load cell before starting a sample."));
+    printCalibrationPrompt(
+      F("LOAD CELL 1 CALIBRATION: Empty load cell 1 and send C to start.")
+    );
     return;
   }
   beanCount = 0;
@@ -731,7 +691,8 @@ void startSample()
   classificationReceived = false;
   frontNirScanCount = 0;
   measuredGoodWeightGrams = 0.0f;
-  measuredBadWeightGrams = 0.0f;
+  lastWeightGrams = NAN;
+  stableWeightSamples = 0;
   releaseStepper(stepper1);
   releaseStepper(stepper2);
   Serial.println(F("SAMPLE_STARTED"));
@@ -765,26 +726,15 @@ void beginLoadCellCalibration()
     Serial.println(F("ERROR: Stop sorting before calibrating load cells."));
     return;
   }
-  if (!loadCell1.is_ready() || !loadCell2.is_ready())
+  if (!loadCell1.is_ready())
   {
     Serial.println(F("ERROR: HX711 not ready."));
     return;
   }
-  if (!cellIsCalibrated(CALIBRATED_CELL_1) ||
-      cellIsCalibrated(CALIBRATED_CELL_2))
-  {
-    calibrationStep = CALIBRATION_CELL_1_EMPTY;
-    printCalibrationPrompt(
-      F("LOAD CELL 1 CALIBRATION: Empty load cell 1 and send C to tare.")
-    );
-  }
-  else
-  {
-    calibrationStep = CALIBRATION_CELL_2_EMPTY;
-    printCalibrationPrompt(
-      F("LOAD CELL 2 CALIBRATION: Empty load cell 2 and send C to tare.")
-    );
-  }
+  calibrationStep = CALIBRATION_CELL_1_EMPTY;
+  printCalibrationPrompt(
+    F("LOAD CELL 1 CALIBRATION: Empty load cell 1 and send C to tare.")
+  );
 }
 
 void tareLoadCell(HX711 &loadCell, int32_t &offset, float &scale)
@@ -813,71 +763,39 @@ void advanceCalibration()
       tareLoadCell(loadCell1, calibration.offset1, calibration.scale1);
       calibration.flags |= CALIBRATED_CELL_1;
       saveCalibration();
-      printCalibrationPrompt(
-        F("LOAD CELL 2 CALIBRATION: Empty load cell 2 and send C to tare.")
-      );
-      calibrationStep = CALIBRATION_CELL_2_EMPTY;
-      break;
-    case CALIBRATION_CELL_2_EMPTY:
-      tareLoadCell(loadCell2, calibration.offset2, calibration.scale2);
-      printCalibrationPrompt(
-        F("LOAD CELL 2 CALIBRATION: Place a known weight on Load Cell 2 and enter grams.")
-      );
-      calibrationStep = CALIBRATION_CELL_2_KNOWN_WEIGHT;
-      break;
-    case CALIBRATION_CELL_2_REMOVE_WEIGHT:
-      tareLoadCell(loadCell2, calibration.offset2, calibration.scale2);
-      calibration.flags |= CALIBRATED_CELL_2;
-      saveCalibration();
       calibrationStep = CALIBRATION_IDLE;
       printCalibrationPrompt(
-        F("Calibration complete: both load cells are calibrated.")
+        F("Calibration complete: good-bean load cell is calibrated.")
       );
       break;
     case CALIBRATION_CELL_1_KNOWN_WEIGHT:
-    case CALIBRATION_CELL_2_KNOWN_WEIGHT:
       Serial.println(F("ERROR: Enter the known calibration weight in grams."));
       break;
   }
 }
 
-void calibrateLoadCell(uint8_t cell, float knownWeightGrams)
+void calibrateLoadCell(float knownWeightGrams)
 {
   if (!isfinite(knownWeightGrams) || knownWeightGrams <= 0.0f)
   {
     Serial.println(F("ERROR: Calibration weight must be greater than zero grams."));
     return;
   }
-  HX711 &loadCell = cell == 1 ? loadCell1 : loadCell2;
-  int32_t offset = cell == 1 ? calibration.offset1 : calibration.offset2;
-  float raw = loadCell.read_average(10);
-  float scale = (raw - static_cast<float>(offset)) / knownWeightGrams;
+  float raw = loadCell1.read_average(10);
+  float scale = (raw - static_cast<float>(calibration.offset1)) /
+    knownWeightGrams;
   if (!isfinite(scale) || fabs(scale) < 0.000001f)
   {
     Serial.println(F("ERROR: Invalid load-cell calibration reading."));
     return;
   }
-  loadCell.set_scale(scale);
-  if (cell == 1)
-  {
-    calibration.scale1 = scale;
-    calibration.offset1 = offset;
-    calibration.flags |= CALIBRATED_CELL_1;
-    calibrationStep = CALIBRATION_CELL_1_REMOVE_WEIGHT;
-    printCalibrationPrompt(
-      F("LOAD CELL 1 CALIBRATION: Remove the weight and send C to continue.")
-    );
-  }
-  else
-  {
-    calibration.scale2 = scale;
-    calibration.offset2 = offset;
-    calibration.flags |= CALIBRATED_CELL_2;
-    calibrationStep = CALIBRATION_CELL_2_REMOVE_WEIGHT;
-    printCalibrationPrompt(
-      F("LOAD CELL 2 CALIBRATION: Remove the weight and send C to finish.")
-    );
-  }
+  loadCell1.set_scale(scale);
+  calibration.scale1 = scale;
+  calibration.flags |= CALIBRATED_CELL_1;
+  calibrationStep = CALIBRATION_CELL_1_REMOVE_WEIGHT;
+  printCalibrationPrompt(
+    F("LOAD CELL 1 CALIBRATION: Remove the weight and send C to finish.")
+  );
   saveCalibration();
 }
 
@@ -989,12 +907,7 @@ void handleCommand(char *command)
   else if (strncmp(command, "K1,", 3) == 0 &&
            calibrationStep == CALIBRATION_CELL_1_KNOWN_WEIGHT)
   {
-    calibrateLoadCell(1, static_cast<float>(atof(command + 3)));
-  }
-  else if (strncmp(command, "K2,", 3) == 0 &&
-           calibrationStep == CALIBRATION_CELL_2_KNOWN_WEIGHT)
-  {
-    calibrateLoadCell(2, static_cast<float>(atof(command + 3)));
+    calibrateLoadCell(static_cast<float>(atof(command + 3)));
   }
   else if (strcmp(command, "N?") == 0)
   {
@@ -1051,9 +964,7 @@ void setup()
   servo2.write(servoAngles[1]);
 
   loadCell1.begin(LOAD_CELL_1_DATA_PIN, LOAD_CELL_1_CLOCK_PIN);
-  loadCell2.begin(LOAD_CELL_2_DATA_PIN, LOAD_CELL_2_CLOCK_PIN);
   loadCell1.set_scale(1.0f);
-  loadCell2.set_scale(1.0f);
 
   Serial.begin(BAUD_RATE);
   Serial1.begin(NANO_LINK_BAUD_RATE);
@@ -1061,9 +972,9 @@ void setup()
   stableIrState = lastRawIrState;
   lastIrChangeAt = millis();
   Serial.println(F("PHENOCOATER_BEAN_COUNTER_READY"));
-  if (!loadCell1.is_ready() || !loadCell2.is_ready())
+  if (!loadCell1.is_ready())
   {
-    Serial.println(F("ERROR: One or both HX711 modules are not ready."));
+    Serial.println(F("ERROR: HX711 not ready."));
   }
   loadCalibration();
 }

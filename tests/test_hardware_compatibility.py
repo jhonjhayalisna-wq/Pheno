@@ -45,7 +45,7 @@ from NIR.as7265x import AS7265XReader, WAVELENGTHS
 class FakeDashboard(QWidget):
     camera_status_changed = Signal(str)
     current_weight_changed = Signal(object)
-    weight_readings_changed = Signal(object, object)
+    weight_readings_changed = Signal(object)
     arduino_status_changed = Signal(str)
     arduino_connection_changed = Signal(bool)
     ir_sensor_status_changed = Signal(bool)
@@ -71,7 +71,6 @@ class FakeDashboard(QWidget):
         self.arduino_status_message = "Arduino not detected."
         self.current_weight_kg = None
         self.good_weight_grams = None
-        self.not_good_weight_grams = None
         self.total_bean_count = 0
         self.arduino_serial = None
         self.arduino_baud_rate = 115200
@@ -278,42 +277,39 @@ class HardwareCompatibilityTests(unittest.TestCase):
         serial_factory.assert_called_once_with("COM4", 115200, timeout=0.05)
         self.assertEqual(dashboard.arduino_port, "COM4")
 
-    def test_dual_load_cell_readings_are_summed_and_converted_to_kilograms(self):
+    def test_good_bean_load_cell_reading_is_converted_to_kilograms(self):
         self.assertEqual(
-            Dashboard.parse_load_cell_weights_grams(
-                "Load Cell 1: 1250.00 g | Load Cell 2: 750.00 g"
-            ),
-            (1250.0, 750.0),
+            Dashboard.parse_load_cell_weight_grams("Load Cell 1: 1250.00 g"),
+            1250.0,
         )
         self.assertEqual(
             Dashboard.parse_load_cell_weight_kg(
-                "Load Cell 1: 1250.00 g | Load Cell 2: 750.00 g"
+                "Load Cell 1: 1250.00 g"
             ),
-            2.0,
+            1.25,
         )
         self.assertEqual(
             Dashboard.parse_load_cell_weight_kg(
-                "Load Cell 1: -12.50 g | Load Cell 2: 1000.00 g"
+                "Load Cell 1: -12.50 g"
             ),
-            0.9875,
+            -0.0125,
         )
         self.assertIsNone(
             Dashboard.parse_load_cell_weight_kg(
                 "Load Cell 1 reading: 1250.00 g"
             )
         )
-        self.assertEqual(
+        self.assertIsNone(
             Dashboard.parse_load_cell_weight_kg(
                 "Load Cell 1: 125.00 g | Load Cell 2: 125.00 g"
-            ),
-            0.25,
+            )
         )
 
-    def test_admin_weight_analysis_displays_both_load_cells_and_their_sum(self):
+    def test_admin_weight_analysis_displays_good_bean_weight_only(self):
         dashboard = FakeDashboard()
         page = ResultsPage(dashboard)
 
-        dashboard.weight_readings_changed.emit(1250.0, 750.0)
+        dashboard.weight_readings_changed.emit(1250.0)
 
         self.assertEqual(page.table.rowCount(), 1)
         self.assertEqual(
@@ -321,18 +317,11 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 page.table.horizontalHeaderItem(column).text()
                 for column in range(page.table.columnCount())
             ],
-            [
-                "Load Cell 1 Weight",
-                "Load Cell 2 Weight",
-                "Combined Total Weight",
-            ],
+            ["Good Bean Weight"],
         )
         self.assertEqual(
-            [
-                page.table.item(0, column).text()
-                for column in range(page.table.columnCount())
-            ],
-            ["1250.00 g", "750.00 g", "2000.00 g"],
+            [page.table.item(0, 0).text()],
+            ["1250.00 g"],
         )
         page.close()
 
@@ -353,16 +342,16 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page = ResultsPage(dashboard)
 
         dashboard._display_total_bean_count(125)
-        dashboard.update_group_weight_display(1234.5, 65.5)
+        dashboard.update_good_weight_display(1234.5)
 
         self.assertEqual(page.total_seeds_value.text(), "125")
         self.assertEqual(page.table.rowCount(), 1)
         self.assertEqual(
-            [page.table.item(0, column).text() for column in range(3)],
-            ["1234.50 g", "65.50 g", "1300.00 g"],
+            [page.table.item(0, 0).text()],
+            ["1234.50 g"],
         )
 
-        dashboard.update_group_weight_display(None, None)
+        dashboard.update_good_weight_display(None)
         self.assertEqual(page.table.rowCount(), 0)
 
     def test_ir_bean_count_messages_update_dashboard_total(self):
@@ -617,6 +606,20 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertIn("const unsigned long BAUD_RATE = 115200;", firmware)
         self.assertIn("Serial.begin(BAUD_RATE);", firmware)
         self.assertEqual(Dashboard().arduino_primary_baud_rate, 115200)
+
+    def test_mega_firmware_weighs_only_good_beans_with_one_load_cell(self):
+        project_root = Path(__file__).parents[1]
+        firmware_paths = (
+            project_root / "NIR" / "mega_controller" / "mega_controller.ino",
+            project_root / "Arduino Codes" / "mega_controller" / "mega_controller.ino",
+        )
+        for firmware_path in firmware_paths:
+            with self.subTest(firmware=str(firmware_path)):
+                firmware = firmware_path.read_text(encoding="utf-8")
+                self.assertIn("HX711 loadCell1;", firmware)
+                self.assertNotIn("HX711 loadCell2", firmware)
+                self.assertNotIn("LOAD_CELL_2_DATA_PIN", firmware)
+                self.assertIn("if (backBeanClass == BEAN_GOOD)", firmware)
 
     def test_nano_uart_matches_wiring_guide_and_mega_link_baud(self):
         project_root = Path(__file__).parents[1]
@@ -1478,10 +1481,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page.moisture_score_input.setText("88")
         page.set_pns_sample_data(115, 0, 0, 0)
         weight_kg = Dashboard.parse_load_cell_weight_kg(
-            "Load Cell 1: 125.00 g | Load Cell 2: 125.00 g"
+            "Load Cell 1: 125.00 g"
         )
         page.set_current_weight(weight_kg)
-        self.assertEqual(page.weight_input.text(), "0.250")
+        self.assertEqual(page.weight_input.text(), "0.125")
         page.set_current_weight(None)
         self.assertEqual(page.unit_price_result.text(), "₱ 178.00 / kg")
         self.assertEqual(page.total_price_result.text(), "")

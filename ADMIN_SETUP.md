@@ -35,9 +35,9 @@ Arduino connections.
 
 Pricing Settings calculates weighted moisture/PNS scores and the total batch
 price automatically from the entered base price and scores, the two effect
-percentages (which always total 100%), and a batch weight in kilograms. Live
-dual load-cell readings are available after both cells have been calibrated.
-Moisture/PNS scores remain manual.
+percentages (which always total 100%), and a batch weight in kilograms. The
+live batch weight comes from the calibrated good-bean load cell; not-good beans
+are not weighed. Moisture/PNS scores remain manual.
 
 The Admin Control Panel shares the existing dashboard hardware controller.
 The Mega runs `NIR/mega_controller/mega_controller.ino`; the Nano runs

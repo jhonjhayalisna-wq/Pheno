@@ -22,10 +22,7 @@ class ResultsPage(QWidget):
         self.update_bean_count(
             {"bean_count": dashboard.total_bean_count}
         )
-        self.update_weights(
-            dashboard.good_weight_grams,
-            dashboard.not_good_weight_grams,
-        )
+        self.update_weights(dashboard.good_weight_grams)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -35,7 +32,7 @@ class ResultsPage(QWidget):
         title_label = QLabel("Weight Analysis")
         title_label.setObjectName("page_title")
         subtitle = QLabel(
-            "Live readings from Load Cell 1 and Load Cell 2, plus their combined total."
+            "Live weight measured on the good-bean collection platform."
         )
         subtitle.setObjectName("settings_description")
         layout.addWidget(title_label)
@@ -66,12 +63,8 @@ class ResultsPage(QWidget):
 
         self.table = QTableWidget()
         self.table.setObjectName("results_table")
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels([
-            "Load Cell 1 Weight",
-            "Load Cell 2 Weight",
-            "Combined Total Weight",
-        ])
+        self.table.setColumnCount(1)
+        self.table.setHorizontalHeaderLabels(["Good Bean Weight"])
         self.table.setRowCount(0)
         self.table.setMinimumHeight(220)
         self.table.horizontalHeader().setSectionsMovable(False)
@@ -95,19 +88,13 @@ class ResultsPage(QWidget):
     def update_bean_count(self, bean_data):
         self.total_seeds_value.setText(f"{bean_data['bean_count']:,}")
 
-    def update_weights(self, good_weight_grams, bad_weight_grams):
-        if good_weight_grams is None or bad_weight_grams is None:
+    def update_weights(self, good_weight_grams):
+        if good_weight_grams is None:
             self.table.setRowCount(0)
             return
         self.table.setRowCount(1)
-        values = (
-            good_weight_grams,
-            bad_weight_grams,
-            good_weight_grams + bad_weight_grams,
+        self.table.setItem(
+            0,
+            0,
+            QTableWidgetItem(f"{good_weight_grams:.2f} g"),
         )
-        for column, value in enumerate(values):
-            self.table.setItem(
-                0,
-                column,
-                QTableWidgetItem(f"{value:.2f} g"),
-            )

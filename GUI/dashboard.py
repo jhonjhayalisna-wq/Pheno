@@ -92,7 +92,7 @@ class Dashboard(QWidget):
     camera_status_changed = Signal(str)
     camera_controls_status_changed = Signal(str)
     current_weight_changed = Signal(object)
-    weight_readings_changed = Signal(object, object)
+    weight_readings_changed = Signal(object)
     arduino_status_changed = Signal(str)
     arduino_connection_changed = Signal(bool)
     ir_sensor_status_changed = Signal(bool)
@@ -170,7 +170,6 @@ class Dashboard(QWidget):
         self.serial_buffer = ""
         self.current_weight_kg = None
         self.good_weight_grams = None
-        self.not_good_weight_grams = None
         self.total_bean_count = 0
         self.good_bean_count = 0
         self.not_good_bean_count = 0
@@ -451,19 +450,12 @@ class Dashboard(QWidget):
                     self.update_total_bean_count(message)
                     self.nir_message_received.emit(message)
                     self.handle_servo_status(message)
-                    weights_grams = self.parse_load_cell_weights_grams(message)
-                    if weights_grams is not None:
-                        good_weight_grams, not_good_weight_grams = weights_grams
-                        weight_kg = (
-                            good_weight_grams + not_good_weight_grams
-                        ) / self.GRAMS_PER_KILOGRAM
+                    weight_grams = self.parse_load_cell_weight_grams(message)
+                    if weight_grams is not None:
+                        weight_kg = weight_grams / self.GRAMS_PER_KILOGRAM
                         self.current_weight_kg = weight_kg
-                        self.good_weight_grams = good_weight_grams
-                        self.not_good_weight_grams = not_good_weight_grams
-                        self.update_group_weight_display(
-                            good_weight_grams,
-                            not_good_weight_grams,
-                        )
+                        self.good_weight_grams = weight_grams
+                        self.update_good_weight_display(weight_grams)
                         self.current_weight_changed.emit(weight_kg)
                         self.emit_bean_data_update()
                         self._set_arduino_status(
@@ -472,7 +464,6 @@ class Dashboard(QWidget):
                     elif message.startswith(
                         (
                             "ERROR: HX711 not ready.",
-                            "ERROR: One or both HX711 modules are not ready.",
                         )
                     ):
                         self._clear_current_weight()
@@ -480,7 +471,6 @@ class Dashboard(QWidget):
                     elif message.startswith(
                         (
                             "LOAD CELL 1 CALIBRATION",
-                            "LOAD CELL 2 CALIBRATION",
                             "Empty load cell",
                             "Place a known",
                             "Remove the weight",
@@ -688,34 +678,26 @@ class Dashboard(QWidget):
 
     @staticmethod
     def parse_load_cell_weight_kg(message):
-        readings = Dashboard.parse_load_cell_weights_grams(message)
-        if readings is None:
+        weight_grams = Dashboard.parse_load_cell_weight_grams(message)
+        if weight_grams is None or not isfinite(weight_grams):
             return None
-        combined_weight_grams = sum(readings)
-        if not isfinite(combined_weight_grams):
-            return None
-        return combined_weight_grams / Dashboard.GRAMS_PER_KILOGRAM
+
+        return weight_grams / Dashboard.GRAMS_PER_KILOGRAM
 
     @staticmethod
-    def parse_load_cell_weights_grams(message):
+    def parse_load_cell_weight_grams(message):
         match = re.fullmatch(
             r"\s*Load\s+Cell\s+1\s*:\s*(-?(?:\d+(?:\.\d*)?|\.\d+))"
-            r"\s*g\s*\|\s*Load\s+Cell\s+2\s*:\s*"
-            r"(-?(?:\d+(?:\.\d*)?|\.\d+))\s*g\s*",
+            r"\s*g\s*",
             message,
             re.IGNORECASE,
         )
         if match is None:
             return None
-        good_weight_grams, not_good_weight_grams = (
-            float(value) for value in match.groups()
-        )
-        if not all(
-            isfinite(weight)
-            for weight in (good_weight_grams, not_good_weight_grams)
-        ):
+        weight_grams = float(match.group(1))
+        if not isfinite(weight_grams):
             return None
-        return good_weight_grams, not_good_weight_grams
+        return weight_grams
 
     parse_load_cell_weight = parse_load_cell_weight_kg
 
@@ -780,25 +762,16 @@ class Dashboard(QWidget):
         if self.current_weight_kg is not None:
             self.current_weight_kg = None
             self.good_weight_grams = None
-            self.not_good_weight_grams = None
-            self.update_group_weight_display(None, None)
+            self.update_good_weight_display(None)
             self.current_weight_changed.emit(None)
             self.emit_bean_data_update()
 
-    def update_group_weight_display(
-        self,
-        good_weight_grams,
-        not_good_weight_grams,
-    ):
-        self.weight_readings_changed.emit(
-            good_weight_grams,
-            not_good_weight_grams,
-        )
-        if good_weight_grams is None or not_good_weight_grams is None:
+    def update_good_weight_display(self, good_weight_grams):
+        self.weight_readings_changed.emit(good_weight_grams)
+        if good_weight_grams is None:
             self.batch_weight_value.setText("0")
             return
-        combined_weight_grams = good_weight_grams + not_good_weight_grams
-        self.batch_weight_value.setText(f"{combined_weight_grams:.2f}")
+        self.batch_weight_value.setText(f"{good_weight_grams:.2f}")
 
     def update_batch_weight_display(self, weight_kg):
         if weight_kg is None:

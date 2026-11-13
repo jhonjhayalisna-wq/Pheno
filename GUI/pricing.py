@@ -585,7 +585,6 @@ class PricingSettingsPage(QWidget):
         normalized = message.casefold()
         relevant_prompts = (
             "load cell 1 calibration",
-            "load cell 2 calibration",
             "empty load cell",
             "place a known",
             "remove the weight",
@@ -596,11 +595,7 @@ class PricingSettingsPage(QWidget):
             return
         self.calibration_prompt_label.setText(message)
         self.calibration_prompt_label.setVisible(True)
-        self._calibration_cell = (
-            1 if "load cell 1" in normalized else
-            2 if "load cell 2" in normalized else
-            None
-        )
+        self._calibration_cell = 1 if "load cell 1" in normalized else None
         needs_reference_weight = "place a known" in normalized
         can_continue = needs_reference_weight or "send c" in normalized
         self.calibration_mass_input.setVisible(needs_reference_weight)
@@ -614,7 +609,7 @@ class PricingSettingsPage(QWidget):
 
     def _request_calibration_continue(self):
         if not self.calibration_mass_input.isHidden():
-            if self._calibration_cell not in (1, 2):
+            if self._calibration_cell != 1:
                 raise ValueError(
                     "Calibration prompt is missing a load-cell number."
                 )

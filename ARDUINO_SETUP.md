@@ -13,7 +13,6 @@ The sorting controller uses two separate Arduino sketches:
 |---|---|
 | IR bean sensor output | D2 |
 | Load Cell 1 / HX711 DT, SCK | D6, D7 |
-| Load Cell 2 / HX711 DT, SCK | D4, D5 |
 | Servo 1, Servo 2 signal | D9, D10 |
 | Stepper Motor 1 / ULN2003 IN1-IN4 | D22-D25 |
 | Stepper Motor 2 / ULN2003 IN1-IN4 | D26-D29 |
@@ -42,11 +41,12 @@ Arduino field; the dashboard must not use the Nano's USB serial port.
 3. Connect Nano D3 (TX) to Mega D19 (RX1), Mega D18 (TX1) to Nano D2 (RX),
    and connect the grounds. Connect the Mega to the dashboard PC.
 4. Before starting a sorting run, open Pricing Settings and follow the Arduino
-   calibration prompts. Empty each load cell to tare it, then place a known
-   weight on that cell and submit its weight in grams. Remove the weight when
-   prompted before proceeding to the other cell.
+   calibration prompts. Empty the good-bean load cell to tare it, then place a
+   known weight on it and submit its weight in grams. Remove the weight when
+   prompted to finish calibration.
 5. Calibration factors and tare offsets are stored in the Mega's EEPROM. The
-   firmware will not start a sorting sample until both cells are calibrated.
+   firmware will not start a sorting sample until the good-bean cell is
+   calibrated.
 6. Install the Python packages in `requirements.txt` and start the dashboard
    system. It detects a bean with the IR sensor, performs camera classification,
    takes three NIR scans, and waits for the dashboard's NIR model before sorting
@@ -61,9 +61,9 @@ and the sorter falls back to the camera classification. An incompatible
 scikit-learn model version is also reported; validate model predictions with
 known samples before relying on physical sorting.
 
-Load-cell values are only meaningful after calibrating each assembled
-load-cell platform with a known mass. The displayed cell readings are the
-current stable totals on the good and not-good platforms.
+The load-cell value is only meaningful after calibrating the assembled
+good-bean platform with a known mass. The displayed weight is the stable total
+on that platform; not-good beans are not weighed.
 
 ## VS Code IntelliSense
 
