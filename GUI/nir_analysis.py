@@ -22,8 +22,6 @@ class NIRAnalysisPage(QWidget):
         self.readings = [NIRReading(wavelength, None) for wavelength in WAVELENGTHS]
         self.received_serial_data = False
         self.scanning = False
-        self.quality_value = None
-        self.nir_confidence_value = None
         self.setup_ui()
 
     def setup_ui(self):
@@ -123,24 +121,22 @@ class NIRAnalysisPage(QWidget):
         summary_title = QLabel("Current Reading")
         summary_title.setProperty("class", "section_title")
         summary.addWidget(summary_title)
-        for label, value in [
-            ("Moisture Content", ""),
-            ("Quality", ""),
-            ("Confidence", ""),
-        ]:
+        summary_values = {
+            "Moisture Content": QLabel(""),
+            "Quality": QLabel(""),
+            "Confidence": QLabel(""),
+        }
+        self.quality_value = summary_values["Quality"]
+        self.nir_confidence_value = summary_values["Confidence"]
+        for label, val in summary_values.items():
             row = QHBoxLayout()
             name = QLabel(label)
             name.setStyleSheet("color: #6b7280;")
-            val = QLabel(value)
             val.setStyleSheet("font-weight: bold;")
             row.addWidget(name)
             row.addStretch()
             row.addWidget(val)
             summary.addLayout(row)
-            if label == "Quality":
-                self.quality_value = val
-            elif label == "Confidence":
-                self.nir_confidence_value = val
         summary.addStretch()
         top.addWidget(summary_panel, 1)
         layout.addLayout(top)
@@ -213,7 +209,7 @@ class NIRAnalysisPage(QWidget):
             self.serial_output.appendPlainText("--------------------")
             self.serial_output.appendPlainText(formatted_line)
             self.serial_output.appendPlainText("--------------------")
-            self.append_reading_row(formatted_line)
+            self.append_reading_row()
             self.serial_output.ensureCursorVisible()
             return
         self.serial_output.appendPlainText(line)
@@ -227,7 +223,7 @@ class NIRAnalysisPage(QWidget):
         ]
         self.spectrum_series.replace(points)
 
-    def append_reading_row(self, formatted_line):
+    def append_reading_row(self) -> None:
         row = self.table.rowCount()
         self.table.insertRow(row)
         for column, reading in enumerate(self.readings):
