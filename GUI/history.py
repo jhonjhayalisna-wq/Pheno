@@ -1,14 +1,18 @@
 from dataclasses import dataclass
 from datetime import date
+from collections.abc import Sequence
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
     QStyle,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -51,6 +55,60 @@ def get_batch_by_id(batch_id):
         (batch for batch in _BATCHES if batch.batch_id == batch_id),
         None,
     )
+
+
+class BatchHistoryPage(QWidget):
+    COLUMNS = (
+        "Batch No.",
+        "Bean No.",
+        "Weight",
+        "PNS Grade",
+        "Good",
+        "Moldy",
+        "Slaty",
+        "Defective",
+        "PNS Score",
+    )
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("batch_history_page")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 14)
+        layout.setSpacing(8)
+
+        title = QLabel("Batch History")
+        title.setObjectName("page_title")
+        description = QLabel("Review PNS grade samples from previous batches.")
+        description.setObjectName("settings_description")
+        layout.addWidget(title)
+        layout.addWidget(description)
+
+        self.data_table = QTableWidget(0, len(self.COLUMNS))
+        self.data_table.setObjectName("batch_history_table")
+        self.data_table.setHorizontalHeaderLabels(self.COLUMNS)
+        self.data_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers
+        )
+        self.data_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows
+        )
+        self.data_table.setAlternatingRowColors(True)
+        self.data_table.verticalHeader().setVisible(False)
+        self.data_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        layout.addWidget(self.data_table, 1)
+
+    def update_rows(self, rows: Sequence[Sequence[object]]) -> None:
+        self.data_table.setRowCount(len(rows))
+        for row_index, values in enumerate(rows):
+            for column_index, value in enumerate(values):
+                self.data_table.setItem(
+                    row_index,
+                    column_index,
+                    QTableWidgetItem(str(value)),
+                )
 
 
 class HistoryPage(QWidget):

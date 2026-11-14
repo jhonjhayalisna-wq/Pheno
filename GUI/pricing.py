@@ -3,7 +3,6 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from PySide6.QtCore import QLocale, Qt, Signal
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
-    QFormLayout,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -15,6 +14,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from .quality import pns_grade_from_bean_count
 
 
 class PricingSettingsPage(QWidget):
@@ -26,8 +26,28 @@ class PricingSettingsPage(QWidget):
         self.setObjectName("pricing_settings_page")
         self.permission_check = permission_check
         self.total_price_unlocked = False
+        self.current_moisture_percent = None
+        self.current_moisture_grade = ""
+        self.current_pns_grade = ""
         self._setup_ui()
         self._update_calculation()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._align_total_card_height()
+
+    def _align_total_card_height(self):
+        total_card = self.total_price_result.parentWidget()
+        if total_card is None:
+            return
+        self.save_inputs_button.ensurePolished()
+        total_card.ensurePolished()
+        shared_height = max(
+            self.save_inputs_button.sizeHint().height(),
+            total_card.sizeHint().height(),
+        )
+        self.save_inputs_button.setFixedHeight(shared_height)
+        total_card.setMinimumHeight(shared_height)
 
     @staticmethod
     def calculate_price(
@@ -148,15 +168,16 @@ class PricingSettingsPage(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(36, 20, 36, 8)
+        layout.setSpacing(12)
 
         header = QVBoxLayout()
-        header.setSpacing(4)
+        header.setSpacing(2)
         title = QLabel("Pricing settings")
         title.setObjectName("page_title")
         description = QLabel(
-            "Configure cacao pricing and calculate a batch result from its quality scores."
+            "Set the base price and grade scores. "
+            "The batch value is calculated from them."
         )
         description.setObjectName("settings_description")
         header.addWidget(title)
@@ -164,18 +185,14 @@ class PricingSettingsPage(QWidget):
         layout.addLayout(header)
 
         panels = QHBoxLayout()
-        panels.setSpacing(8)
+        panels.setSpacing(20)
         controls_panel = self._create_panel("Pricing controls")
         controls_layout = controls_panel.layout()
         controls_layout.setSpacing(0)
-        controls_layout.addSpacing(50)
+        controls_layout.addStretch(1)
 
-        base_form = QFormLayout()
-        base_form.setHorizontalSpacing(10)
-        base_form.setVerticalSpacing(8)
-        base_form.setFieldGrowthPolicy(
-            QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
-        )
+        base_form = QVBoxLayout()
+        base_form.setSpacing(34)
         self.base_price_input = self._create_numeric_input(
             "pricing_base_price_input",
             0,
@@ -185,30 +202,34 @@ class PricingSettingsPage(QWidget):
         )
         self.base_price_input.setObjectName("pricing_base_price_input")
         self.base_price_input.textChanged.connect(self._inputs_changed)
-        base_form.addRow(
-            self._create_form_label("Base price per kilo"),
-            self._input_with_suffix(self.base_price_input, "pesos/kg"),
+        base_form.addWidget(self._create_form_label("Base price per kilo"))
+        base_form.addWidget(
+            self._input_with_prefix_suffix(
+                self.base_price_input,
+                "₱",
+                "pesos/kg",
+            )
         )
         controls_layout.addLayout(base_form)
-        controls_layout.addSpacing(50)
+        controls_layout.addStretch(2)
 
         effect_title = QLabel("Score effect")
         effect_title.setObjectName("pricing_section_title")
 
         effect_section = QVBoxLayout()
-        effect_section.setSpacing(0)
+        effect_section.setSpacing(4)
         effect_section.addWidget(effect_title)
-        effect_section.addSpacing(20)
+        effect_section.addSpacing(30)
 
         effect_grid = QGridLayout()
         effect_grid.setVerticalSpacing(12)
         effect_grid.setColumnStretch(0, 1)
         effect_grid.setColumnStretch(1, 1)
-        moisture_effect_name = QLabel("Moisture Content")
+        moisture_effect_name = QLabel("Moisture content")
         moisture_effect_name.setObjectName("pricing_control_label")
         self.moisture_effect_label = QLabel("50%")
         self.moisture_effect_label.setObjectName("pricing_effect_value")
-        pns_effect_name = QLabel("PNS Grade")
+        pns_effect_name = QLabel("PNS grade")
         pns_effect_name.setObjectName("pricing_control_label")
         self.pns_effect_label = QLabel("50%")
         self.pns_effect_label.setObjectName("pricing_effect_value")
@@ -227,29 +248,37 @@ class PricingSettingsPage(QWidget):
         self.moisture_effect_slider.valueChanged.connect(
             self._update_effect_labels
         )
-        self.moisture_effect_slider.valueChanged.connect(self._inputs_changed        )
-        effect_grid.addWidget(self.moisture_effect_slider, 1, 0, 1, 2)
-        effect_grid.addWidget(self.moisture_effect_label, 2, 0)
+        self.moisture_effect_slider.valueChanged.connect(self._inputs_changed)
+        effect_grid.addWidget(self.moisture_effect_label, 1, 0)
         effect_grid.addWidget(
             self.pns_effect_label,
-            2,
+            1,
             1,
             alignment=Qt.AlignmentFlag.AlignRight,
         )
+        effect_grid.addWidget(self.moisture_effect_slider, 2, 0, 1, 2)
         effect_section.addLayout(effect_grid)
         controls_layout.addLayout(effect_section)
         controls_layout.addSpacing(40)
-        controls_layout.addStretch()
 
-        self.save_inputs_button = QPushButton("Save Inputs")
+        self.save_inputs_button = QPushButton("Save inputs")
         self.save_inputs_button.setObjectName("pricing_save_inputs_button")
+        self.save_inputs_button.ensurePolished()
+        self.save_inputs_button.setMinimumHeight(
+            self.save_inputs_button.sizeHint().height()
+        )
         self.save_inputs_button.clicked.connect(self._save_inputs)
         controls_layout.addWidget(self.save_inputs_button)
 
         panels.addWidget(controls_panel, 1)
 
-        result_panel = self._create_panel("Price Result")
+        result_panel = self._create_panel("Grade Criteria")
         result_layout = result_panel.layout()
+        (
+            self.moisture_grade_score_inputs,
+            self.pns_grade_score_inputs,
+        ) = self._create_grade_score_table(result_layout)
+
         self.calibration_prompt_label = QLabel(
             "Arduino calibration prompts will appear here."
         )
@@ -282,11 +311,12 @@ class PricingSettingsPage(QWidget):
         self.calibration_mass_input.setVisible(False)
         result_layout.addWidget(self.calibration_mass_input)
 
-        value_form = QFormLayout()
-        value_form.setHorizontalSpacing(18)
-        value_form.setVerticalSpacing(15)
-        value_form.setFieldGrowthPolicy(
-            QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
+        result_layout.addStretch()
+        self.total_price_result = self._add_result_row(
+            result_layout,
+            "Total batch value",
+            prominent=True,
+            initial_value="₱ —",
         )
         self.weight_input = self._create_numeric_input(
             "pricing_weight_input",
@@ -318,61 +348,18 @@ class PricingSettingsPage(QWidget):
         self.pns_score_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.pns_score_input.setReadOnly(True)
         self.moisture_score_input.textChanged.connect(self._inputs_changed)
-        pns_grade_row = QWidget()
-        pns_grade_layout = QHBoxLayout(pns_grade_row)
-        pns_grade_layout.setContentsMargins(0, 0, 0, 0)
-        pns_grade_layout.setSpacing(8)
-        pns_grade_layout.addWidget(
-            self._input_with_suffix(self.pns_score_input, "/ 100"),
-            1,
-        )
-        pns_grade_layout.addWidget(QLabel("Grade"))
         self.pns_grade_label = QLabel("")
         self.pns_grade_label.setObjectName("pricing_pns_grade")
-        self.pns_grade_label.setMinimumWidth(36)
-        pns_grade_layout.addWidget(self.pns_grade_label)
-        value_form.addRow(
-            self._create_form_label("Current Weight (kg)"),
-            self._input_with_suffix(self.weight_input, "kg"),
-        )
-        value_form.addRow(
-            self._create_form_label("Moisture score"),
-            self._input_with_suffix(self.moisture_score_input, "/ 100"),
-        )
-        value_form.addRow(
-            self._create_form_label("PNS grade score"),
-            pns_grade_row,
-        )
-        result_layout.addLayout(value_form)
 
-        results_divider = QFrame()
-        results_divider.setObjectName("pricing_results_divider")
-        results_divider.setFrameShape(QFrame.Shape.HLine)
-        result_layout.addWidget(results_divider)
-        self.moisture_contribution_result = self._add_result_row(
-            result_layout,
-            "Overall Moisture Score",
-            initial_value="",
+        panel_minimum_width = max(
+            controls_panel.minimumSizeHint().width(),
+            result_panel.minimumSizeHint().width(),
         )
-        self.pns_contribution_result = self._add_result_row(
-            result_layout,
-            "Overall PNS Score",
-            initial_value="",
-        )
-        self.unit_price_result = self._add_result_row(
-            result_layout,
-            "Price Per Kilo",
-            initial_value="",
-        )
-        self.total_price_result = self._add_result_row(
-            result_layout,
-            "Total batch value",
-            prominent=True,
-            initial_value="",
-        )
+        controls_panel.setMinimumWidth(panel_minimum_width)
+        result_panel.setMinimumWidth(panel_minimum_width)
         panels.addWidget(result_panel, 1)
-        layout.addLayout(panels)
-        layout.addStretch()
+        layout.addLayout(panels, 1)
+        self._align_total_card_height()
 
     @staticmethod
     def _create_form_label(text):
@@ -385,13 +372,77 @@ class PricingSettingsPage(QWidget):
         panel = QFrame()
         panel.setObjectName("pricing_panel")
         panel_layout = QVBoxLayout(panel)
-        panel_layout.setContentsMargins(12, 10, 12, 12)
-        panel_layout.setSpacing(8)
+        panel_layout.setContentsMargins(24, 20, 24, 24)
+        panel_layout.setSpacing(4)
         heading = QLabel(title)
         heading.setObjectName("pricing_panel_heading")
         heading.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         panel_layout.addWidget(heading)
         return panel
+
+    def _create_grade_score_table(self, layout):
+        table = QGridLayout()
+        table.setContentsMargins(0, 36, 0, 0)
+        table.setHorizontalSpacing(12)
+        table.setVerticalSpacing(28)
+        for column in range(3):
+            table.setColumnStretch(column, 1)
+            table.setColumnMinimumWidth(column, 220)
+
+        headers = (
+            ("GRADE", 0),
+            ("MOISTURE\nSCORE", 1),
+            ("PNS SCORE", 2),
+        )
+        for text, column in headers:
+            heading = QLabel(text)
+            heading.setObjectName("pricing_grade_column_heading")
+            heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            heading.setWordWrap(True)
+            table.addWidget(heading, 0, column)
+
+        moisture_inputs = {}
+        pns_inputs = {}
+        for index, grade in enumerate(("A", "B", "C")):
+            row = index + 1
+            grade_badge = QLabel(grade)
+            grade_badge.setObjectName("pricing_grade_badge")
+            grade_badge.setFixedSize(72, 72)
+            grade_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.addWidget(
+                grade_badge,
+                row,
+                0,
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
+
+            for column, title, grade_inputs in (
+                (1, "Moisture Score", moisture_inputs),
+                (2, "PNS Score", pns_inputs),
+            ):
+                score_input = self._create_numeric_input(
+                    "pricing_grade_score_input",
+                    0,
+                    100,
+                    2,
+                    "0 to 100",
+                )
+                score_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                score_input.setFixedWidth(220)
+                score_input.setAccessibleName(
+                    f"{title} score assigned to grade {grade}"
+                )
+                score_input.textChanged.connect(self._grade_scores_changed)
+                table.addWidget(
+                    score_input,
+                    row,
+                    column,
+                    alignment=Qt.AlignmentFlag.AlignCenter,
+                )
+                grade_inputs[grade] = score_input
+
+        layout.addLayout(table)
+        return moisture_inputs, pns_inputs
 
     @staticmethod
     def _create_numeric_input(object_name, minimum, maximum, decimals, placeholder):
@@ -410,11 +461,15 @@ class PricingSettingsPage(QWidget):
         return numeric_input
 
     @staticmethod
-    def _input_with_suffix(numeric_input, suffix):
-        container = QWidget()
+    def _input_with_prefix_suffix(numeric_input, prefix, suffix):
+        container = QFrame()
+        container.setObjectName("pricing_price_input_container")
         row = QHBoxLayout(container)
-        row.setContentsMargins(0, 0, 0, 0)
+        row.setContentsMargins(10, 4, 10, 4)
         row.setSpacing(8)
+        prefix_label = QLabel(prefix)
+        prefix_label.setObjectName("pricing_input_prefix")
+        row.addWidget(prefix_label)
         row.addWidget(numeric_input, 1)
         suffix_label = QLabel(suffix)
         suffix_label.setObjectName("pricing_input_suffix")
@@ -432,10 +487,11 @@ class PricingSettingsPage(QWidget):
             total_card = QFrame()
             total_card.setObjectName("pricing_total_card")
             total_layout = QVBoxLayout(total_card)
-            total_layout.setContentsMargins(12, 12, 12, 12)
-            total_layout.setSpacing(6)
+            total_layout.setContentsMargins(16, 3, 16, 2)
+            total_layout.setSpacing(2)
             name = QLabel(title)
             name.setObjectName("pricing_total_label")
+            name.setAlignment(Qt.AlignmentFlag.AlignCenter)
             value = QLabel(initial_value)
             value.setObjectName("pricing_total_result")
             value.setProperty(
@@ -447,8 +503,10 @@ class PricingSettingsPage(QWidget):
                 ),
             )
             value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            total_layout.addStretch()
             total_layout.addWidget(name)
             total_layout.addWidget(value)
+            total_layout.addStretch()
             layout.addWidget(total_card)
             return value
 
@@ -487,10 +545,7 @@ class PricingSettingsPage(QWidget):
             or pns_score is None
             or not 0 <= pns_score <= 100
         ):
-            self.moisture_contribution_result.clear()
-            self.pns_contribution_result.clear()
-            self.unit_price_result.clear()
-            self._set_total_price_text("")
+            self._set_total_price_text("₱ —")
             return
         valid_weight = (
             weight_kg is not None
@@ -504,27 +559,15 @@ class PricingSettingsPage(QWidget):
             self.moisture_effect_slider.value(),
         )
         if result is None:
-            self.moisture_contribution_result.clear()
-            self.pns_contribution_result.clear()
-            self.unit_price_result.clear()
-            self._set_total_price_text("")
+            self._set_total_price_text("₱ —")
             return
 
-        self.moisture_contribution_result.setText(
-            f"{result['moisture_contribution']:.2f}"
-        )
-        self.pns_contribution_result.setText(
-            f"{result['pns_contribution']:.2f}"
-        )
-        self.unit_price_result.setText(
-            f"₱ {result['price_per_kilo']:,.2f} / kg"
-        )
         if not self.total_price_unlocked:
-            self._set_total_price_text("")
+            self._set_total_price_text("₱ —")
         elif not valid_weight:
-            self._set_total_price_text("")
+            self._set_total_price_text("₱ —")
         elif result["total_price"] is None:
-            self._set_total_price_text("")
+            self._set_total_price_text("₱ —")
         else:
             self._set_total_price_text(f"₱ {result['total_price']:,.2f}")
 
@@ -533,6 +576,62 @@ class PricingSettingsPage(QWidget):
         self._update_calculation()
 
     def _inputs_changed(self):
+        self._update_calculation()
+
+    def _grade_scores_changed(self):
+        self._apply_grade_scores()
+
+    def set_grading_data(self, moisture_percent, bean_count):
+        self.current_moisture_percent = moisture_percent
+        self.current_moisture_grade = self._moisture_grade_from_percentage(
+            moisture_percent
+        )
+        self.current_pns_grade = pns_grade_from_bean_count(bean_count)
+        self.pns_grade_label.setText(self.current_pns_grade)
+        self._apply_grade_scores()
+
+    @staticmethod
+    def _moisture_grade_from_percentage(moisture_percent):
+        if moisture_percent is None:
+            return ""
+        try:
+            moisture = Decimal(str(moisture_percent))
+        except (InvalidOperation, TypeError, ValueError):
+            return ""
+        if (
+            not moisture.is_finite()
+            or not Decimal(0) <= moisture <= Decimal(100)
+        ):
+            return ""
+        if Decimal(6) <= moisture <= Decimal("7.5"):
+            return "A"
+        if moisture < Decimal(6):
+            return "B"
+        return "C"
+
+    @staticmethod
+    def _configured_grade_score(grade_inputs, grade):
+        if not grade:
+            return ""
+        score_input = grade_inputs[grade]
+        score = PricingSettingsPage._entered_value(score_input)
+        if score is None or score > 100:
+            return ""
+        return score_input.text().strip()
+
+    def _apply_grade_scores(self):
+        self.moisture_score_input.setText(
+            self._configured_grade_score(
+                self.moisture_grade_score_inputs,
+                self.current_moisture_grade,
+            )
+        )
+        self.pns_score_input.setText(
+            self._configured_grade_score(
+                self.pns_grade_score_inputs,
+                self.current_pns_grade,
+            )
+        )
         self._update_calculation()
 
     def set_current_weight(self, weight_kg):
@@ -571,15 +670,7 @@ class PricingSettingsPage(QWidget):
         ):
             raise ValueError("PNS sample counts are inconsistent.")
 
-        result = self.calculate_pns_grade(
-            total,
-            moldy * Decimal(100) / total,
-            slaty * Decimal(100) / total,
-            defected * Decimal(100) / total,
-        )
-        self.pns_score_input.setText(str(result["score"]))
-        self.pns_grade_label.setText(result["grade"])
-        self._update_calculation()
+        self.set_grading_data(self.current_moisture_percent, int(total))
 
     def update_calibration_prompt(self, message):
         normalized = message.casefold()

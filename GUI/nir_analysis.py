@@ -1,7 +1,11 @@
+from collections.abc import Mapping
+from typing import Any
+
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QHeaderView,
@@ -62,6 +66,19 @@ class NIRAnalysisPage(QWidget):
         chart_label = QLabel("Spectral Response")
         chart_label.setProperty("class", "section_title")
         chart_layout.addWidget(chart_label)
+        bean_id_row = QHBoxLayout()
+        bean_id_row.addStretch()
+        bean_id_row.addWidget(QLabel("Bean ID"))
+        self.spectrum_bean_id_value = QLabel("--")
+        self.spectrum_bean_id_value.setObjectName("nir_spectrum_bean_id")
+        self.spectrum_bean_id_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        bean_id_box = QFrame()
+        bean_id_box.setObjectName("nir_spectrum_bean_id_box")
+        bean_id_box_layout = QHBoxLayout(bean_id_box)
+        bean_id_box_layout.setContentsMargins(6, 2, 6, 2)
+        bean_id_box_layout.addWidget(self.spectrum_bean_id_value)
+        bean_id_row.addWidget(bean_id_box)
+        chart_layout.addLayout(bean_id_row)
 
         self.spectrum_series = QLineSeries()
         self.spectrum_series.setName("AS7265X response")
@@ -126,17 +143,21 @@ class NIRAnalysisPage(QWidget):
             "Quality": QLabel(""),
             "Confidence": QLabel(""),
         }
+        self.moisture_content_value = summary_values["Moisture Content"]
         self.quality_value = summary_values["Quality"]
         self.nir_confidence_value = summary_values["Confidence"]
         for label, val in summary_values.items():
-            row = QHBoxLayout()
+            reading_card = QFrame()
+            reading_card.setObjectName("nir_reading_card")
+            card_layout = QVBoxLayout(reading_card)
+            card_layout.setContentsMargins(8, 6, 8, 6)
             name = QLabel(label)
-            name.setStyleSheet("color: #6b7280;")
+            name.setObjectName("nir_reading_label")
+            val.setObjectName("nir_reading_value")
             val.setStyleSheet("font-weight: bold;")
-            row.addWidget(name)
-            row.addStretch()
-            row.addWidget(val)
-            summary.addLayout(row)
+            card_layout.addWidget(name)
+            card_layout.addWidget(val)
+            summary.addWidget(reading_card)
         summary.addStretch()
         top.addWidget(summary_panel, 1)
         layout.addLayout(top)
@@ -174,6 +195,21 @@ class NIRAnalysisPage(QWidget):
             return
         self.quality_value.setText(label)
         self.nir_confidence_value.setText(f"{confidence:.1f}%")
+
+    def set_bean_id(self, bean_id: str) -> None:
+        self.spectrum_bean_id_value.setText(bean_id or "--")
+
+    def set_moisture_content(self, value: str | float | None) -> None:
+        if value is None:
+            self.moisture_content_value.setText("")
+        elif isinstance(value, (int, float)):
+            self.moisture_content_value.setText(f"{float(value):.2f}%")
+        else:
+            self.moisture_content_value.setText(str(value))
+
+    def update_bean_data(self, metrics: Mapping[str, Any]) -> None:
+        self.set_bean_id(str(metrics.get("bean_id") or "--"))
+        self.set_moisture_content(metrics.get("moisture"))
 
     def set_scanning_state(self, enabled: bool) -> None:
         self.scanning = bool(enabled)

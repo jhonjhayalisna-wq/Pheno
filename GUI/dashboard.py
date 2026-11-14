@@ -211,6 +211,11 @@ class Dashboard(QWidget):
         self.current_weight_kg: float | None = None
         self.good_weight_grams: float | None = None
         self.total_bean_count = 0
+        self.current_bean_id = "0" * 12
+        self.quality_value = QLabel("UNDEFINED", self)
+        self.quality_summary_value = QLabel("Classification", self)
+        self.quality_value.hide()
+        self.quality_summary_value.hide()
         self.good_bean_count = 0
         self.not_good_bean_count = 0
         self.bean_rotation_active = False
@@ -834,11 +839,9 @@ class Dashboard(QWidget):
 
     def update_current_seed_id(self, bean_number: int) -> None:
         if bean_number <= 0:
-            self.current_seed_value.setText("0" * 12)
+            self.current_bean_id = "0" * 12
             return
-        self.current_seed_value.setText(
-            f"{date.today():%Y%m%d}{bean_number:04d}"
-        )
+        self.current_bean_id = f"{date.today():%Y%m%d}{bean_number:04d}"
 
     @staticmethod
     def parse_bean_count(message: str) -> int | None:
@@ -881,7 +884,7 @@ class Dashboard(QWidget):
         self,
     ) -> dict[str, str | int | float | None]:
         return {
-            "bean_id": self.current_seed_value.text(),
+            "bean_id": self.current_bean_id,
             "bean_count": self.total_bean_count,
             "batch_weight_grams": (
                 self.current_weight_kg * self.GRAMS_PER_KILOGRAM
@@ -890,6 +893,11 @@ class Dashboard(QWidget):
             ),
             "moisture": None,
             "quality": self.quality_value.text(),
+            "confidence": (
+                self.last_quality_confidence
+                if self.quality_value.text() != "UNDEFINED"
+                else None
+            ),
         }
 
     @staticmethod
@@ -961,7 +969,11 @@ class Dashboard(QWidget):
             if is_narrow
             else QBoxLayout.Direction.LeftToRight
         )
-        preview_width = min(360, max(180, width - 36))
+        preview_width = (
+            180
+            if width < 760
+            else min(360, max(180, width - 36))
+        )
         preview_width = max(180, preview_width // 9 * 9)
         preview_height = preview_width * 16 // 9
         self.camera_frame.setFixedSize(preview_width, preview_height)
@@ -1771,7 +1783,6 @@ class Dashboard(QWidget):
         heading_layout.setSpacing(4)
         heading_layout.addWidget(title)
         heading_layout.addWidget(subtitle)
-        main_layout.addLayout(heading_layout)
 
         # --------------------------------
         # STATUS CARDS
@@ -1782,42 +1793,27 @@ class Dashboard(QWidget):
         self.cards_layout.setVerticalSpacing(12)
 
         self.cards = [
-            self.create_card("CURRENT SEED", "0" * 12, "Bean ID"),
             self.create_card("TOTAL BATCH WEIGHT", "0", "grams"),
-            self.create_card("MOISTURE", "", "%"),
-            self.create_card("QUALITY", "UNDEFINED", "Classification"),
-            self.create_card("TOTAL BEANS", "0", "Beans processed"),
+            self.create_card("BEAN COUNT", "0", "Beans processed"),
         ]
-        current_seed_value = self.cards[0].findChild(QLabel, "card_value")
-        if current_seed_value is None:
-            raise RuntimeError("The current-seed card has no value label.")
-        self.current_seed_value = current_seed_value
-
-        batch_weight_value = self.cards[1].findChild(QLabel, "card_value")
+        batch_weight_value = self.cards[0].findChild(QLabel, "card_value")
         if batch_weight_value is None:
             raise RuntimeError("The batch-weight card has no value label.")
         self.batch_weight_value = batch_weight_value
 
-        quality_value = self.cards[3].findChild(QLabel, "card_value")
-        if quality_value is None:
-            raise RuntimeError("The quality card has no value label.")
-        self.quality_value = quality_value
-
-        quality_summary_value = self.cards[3].findChild(
-            QLabel,
-            "card_unit",
-        )
-        if quality_summary_value is None:
-            raise RuntimeError("The quality card has no unit label.")
-        self.quality_summary_value = quality_summary_value
-        self.update_quality_totals_display()
         total_beans_value = self.cards[-1].findChild(QLabel, "card_value")
         if total_beans_value is None:
             raise RuntimeError("The total-beans card has no value label.")
         self.total_beans_value = total_beans_value
         self.card_columns = 1
         self.reflow_cards(self.card_columns)
-        main_layout.addLayout(self.cards_layout)
+
+        heading_cards_layout = QVBoxLayout()
+        heading_cards_layout.setContentsMargins(0, 0, 0, 0)
+        heading_cards_layout.setSpacing(8)
+        heading_cards_layout.addLayout(heading_layout)
+        heading_cards_layout.addLayout(self.cards_layout)
+        main_layout.addLayout(heading_cards_layout)
 
         # --------------------------------
         # CAMERA

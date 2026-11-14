@@ -168,7 +168,11 @@ QMainWindow#admin_control_panel,
     background-color: #f4f7f5;
     font-family: "Segoe UI";
     font-size: 14px;
-    color: #1d3428;
+    color: #173f2a;
+}
+
+#pricing_settings_page #settings_description {
+    font-size: 13px;
 }
 
 #pricing_scroll,
@@ -186,15 +190,23 @@ QMainWindow#admin_control_panel,
     border: none;
 }
 
+#batch_history_scroll,
+#batch_history_scroll QWidget#qt_scrollarea_viewport,
+#batch_history_scroll > QWidget,
+#batch_history_page {
+    background-color: #ffffff;
+    border: none;
+}
+
 #bean_sheet_title {
     color: #173f2a;
-    font-size: 30px;
+    font-size: 22px;
     font-weight: 700;
 }
 
 #bean_sheet_description {
-    color: #607267;
-    font-size: 14px;
+    color: #6b7280;
+    font-size: 13px;
 }
 
 #bean_sheet_summary_card,
@@ -205,14 +217,15 @@ QMainWindow#admin_control_panel,
 }
 
 #bean_sheet_summary_title {
-    color: #294d37;
+    color: #68796f;
     font-size: 12px;
     font-weight: 700;
 }
 
 #bean_sheet_summary_value {
-    color: #294d37;
-    font-size: 12px;
+    color: #173f2a;
+    font-size: 14px;
+    font-weight: 700;
 }
 
 #bean_sheet_table_title {
@@ -245,7 +258,8 @@ QPushButton#bean_sheet_tab:checked {
     font-weight: 700;
 }
 
-QTableWidget#bean_data_table {
+QTableWidget#bean_data_table,
+QTableWidget#batch_history_table {
     background-color: #ffffff;
     alternate-background-color: #f7faf8;
     border: 1px solid #dce5df;
@@ -256,7 +270,8 @@ QTableWidget#bean_data_table {
     selection-color: #173f2a;
 }
 
-QTableWidget#bean_data_table QHeaderView::section {
+QTableWidget#bean_data_table QHeaderView::section,
+QTableWidget#batch_history_table QHeaderView::section {
     background-color: #dff2e2;
     border: none;
     border-bottom: 1px solid #cbded0;
@@ -266,21 +281,29 @@ QTableWidget#bean_data_table QHeaderView::section {
     padding: 9px 7px;
 }
 
+QFrame#nir_reading_card,
+QFrame#nir_spectrum_bean_id_box {
+    background-color: #ffffff;
+    border: 1px solid #dce5df;
+    border-radius: 8px;
+}
+
+QLabel#nir_reading_label {
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QLabel#nir_reading_value,
+QLabel#nir_spectrum_bean_id {
+    color: #173f2a;
+    font-weight: 700;
+}
+
 #bean_sheet_empty_state {
     color: #718077;
     font-size: 13px;
     padding: 10px;
-}
-
-#pricing_settings_page #page_title {
-    color: #173f2a;
-    font-size: 30px;
-    font-weight: 700;
-}
-
-#pricing_settings_page #settings_description {
-    color: #607267;
-    font-size: 14px;
 }
 
 #pricing_panel {
@@ -292,36 +315,49 @@ QTableWidget#bean_data_table QHeaderView::section {
 #pricing_panel_heading {
     background-color: transparent;
     border: none;
-    border-bottom: 1px solid #e7ece8;
     border-radius: 0;
     color: #173f2a;
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 700;
-    padding: 2px 2px 10px 2px;
+    padding: 0;
 }
 
-#pricing_section_title {
-    color: #294d37;
+#pricing_grade_column_heading {
+    color: #68796f;
     font-size: 15px;
     font-weight: 700;
 }
 
-#pricing_control_label,
-#pricing_result_label {
+#pricing_grade_badge {
+    background-color: #e3f3e8;
+    border: none;
+    border-radius: 12px;
+    color: #287044;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+#pricing_section_title {
+    color: #294d37;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+#pricing_control_label {
     color: #53675b;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 600;
 }
 
 #bean_sheet_current_label {
-    color: #294d37;
+    color: #68796f;
     font-size: 12px;
     font-weight: 700;
 }
 
 #pricing_form_label {
     color: #3e5648;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
 }
 
@@ -341,7 +377,7 @@ QTableWidget#bean_data_table QHeaderView::section {
 
 #pricing_effect_value {
     color: #287044;
-    font-size: 15px;
+    font-size: 18px;
     font-weight: 700;
 }
 
@@ -352,8 +388,8 @@ QTableWidget#bean_data_table QHeaderView::section {
 }
 
 #bean_sheet_current_value {
-    color: #294d37;
-    font-size: 12px;
+    color: #173f2a;
+    font-size: 14px;
     font-weight: 700;
 }
 
@@ -363,60 +399,53 @@ QTableWidget#bean_data_table QHeaderView::section {
     border-radius: 7px;
 }
 
-#pricing_results_divider {
-    background-color: #e7ece8;
-    border: none;
-    max-height: 1px;
-    min-height: 1px;
-}
-
-#pricing_total_card {
-    background-color: #ffffff;
-    border: 1px solid #ccd8d0;
-    border-radius: 11px;
-}
-
-#pricing_total_label {
-    color: #1b5b34;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 1px;
-}
-
-#pricing_total_result {
-    background-color: #ffffff;
-    border: 1px solid #ccd8d0;
-    border-radius: 7px;
-    color: #20392b;
-    font-size: 28px;
-    font-weight: 700;
-    padding: 8px 10px;
-}
-
-#pricing_total_result[result_state="status"] {
-    color: #20392b;
-    font-size: 14px;
-    font-weight: 600;
-}
-
-#pricing_save_inputs_button {
+#pricing_total_card,
+#pricing_save_inputs_button,
+#pricing_calibration_continue_button {
     background-color: #2e7d4f;
     border: 1px solid #2e7d4f;
     border-radius: 7px;
+}
+
+#pricing_total_label {
     color: #ffffff;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
-    min-height: 38px;
-    padding: 8px 14px;
+}
+
+#pricing_total_result {
+    background-color: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 0;
+}
+
+#pricing_total_result[result_state="status"] {
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+#pricing_save_inputs_button,
+#pricing_calibration_continue_button {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: 700;
+    min-height: 50px;
+    padding: 10px 16px;
     text-align: center;
 }
 
-#pricing_save_inputs_button:hover {
+#pricing_save_inputs_button:hover,
+#pricing_calibration_continue_button:hover {
     background-color: #24643e;
     border-color: #24643e;
 }
 
-#pricing_save_inputs_button:pressed {
+#pricing_save_inputs_button:pressed,
+#pricing_calibration_continue_button:pressed {
     background-color: #1f5c38;
     border-color: #17452b;
 }
@@ -428,14 +457,15 @@ QDoubleSpinBox#pricing_weight_input,
 QLineEdit#pricing_base_price_input,
 QLineEdit#pricing_moisture_score_input,
 QLineEdit#pricing_pns_score_input,
-QLineEdit#pricing_weight_input {
+QLineEdit#pricing_weight_input,
+QLineEdit#pricing_grade_score_input {
     background-color: #ffffff;
     border: 1px solid #ccd8d0;
     border-radius: 7px;
     color: #20392b;
-    font-size: 14px;
-    min-height: 24px;
-    padding: 8px 10px;
+    font-size: 16px;
+    min-height: 30px;
+    padding: 10px 12px;
     selection-background-color: #cfe5d5;
     selection-color: #173f2a;
 }
@@ -455,7 +485,8 @@ QDoubleSpinBox#pricing_weight_input:hover,
 QLineEdit#pricing_base_price_input:hover,
 QLineEdit#pricing_moisture_score_input:hover,
 QLineEdit#pricing_pns_score_input:hover,
-QLineEdit#pricing_weight_input:hover {
+QLineEdit#pricing_weight_input:hover,
+QLineEdit#pricing_grade_score_input:hover {
     border: 1px solid #86b695;
 }
 
@@ -466,20 +497,49 @@ QDoubleSpinBox#pricing_weight_input:focus,
 QLineEdit#pricing_base_price_input:focus,
 QLineEdit#pricing_moisture_score_input:focus,
 QLineEdit#pricing_pns_score_input:focus,
-QLineEdit#pricing_weight_input:focus {
+QLineEdit#pricing_weight_input:focus,
+QLineEdit#pricing_grade_score_input:focus {
     border: 1px solid #43845a;
 }
 
 #pricing_input_suffix {
     color: #68796f;
-    font-size: 13px;
+    font-size: 10px;
+}
+
+#pricing_price_input_container {
+    background-color: #ffffff;
+    border: 1px solid #ccd8d0;
+    border-radius: 10px;
+}
+
+#pricing_input_prefix {
+    color: #173f2a;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+QLineEdit#pricing_base_price_input,
+QLineEdit#pricing_base_price_input:hover,
+QLineEdit#pricing_base_price_input:focus {
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    min-height: 28px;
+    padding: 6px 0;
+}
+
+QLineEdit#pricing_grade_score_input {
+    font-size: 18px;
+    min-height: 20px;
+    padding: 5px 6px;
 }
 
 QSlider#pricing_effect_slider::groove:horizontal {
     background-color: #e4ebe6;
     border: 1px solid #d4dfd7;
     border-radius: 4px;
-    height: 8px;
+    height: 10px;
 }
 
 QSlider#pricing_effect_slider::sub-page:horizontal {
@@ -495,9 +555,9 @@ QSlider#pricing_effect_slider::add-page:horizontal {
 QSlider#pricing_effect_slider::handle:horizontal {
     background-color: #287044;
     border: 2px solid white;
-    border-radius: 9px;
-    margin: -6px 0;
-    width: 18px;
+    border-radius: 12px;
+    margin: -8px 0;
+    width: 24px;
 }
 
 QScrollArea#admin_page_scroll {
@@ -1368,13 +1428,42 @@ APP_STYLE += """
     font-size: 16px;
 }
 
+#sidebar[compact="true"] QLabel#logo_subtitle {
+    font-size: 10px;
+}
+
+#sidebar[compact="true"] QPushButton#menu_button {
+    font-size: 12px;
+    min-height: 34px;
+    padding: 6px 8px;
+}
+
+#header[compact="true"] #page_title {
+    font-size: 16px;
+}
+
+#system_status {
+    font-size: 12px;
+    padding: 4px;
+}
+
 #page_title,
 #bean_sheet_title {
-    font-size: 28px;
+    font-size: 22px;
 }
 
 #admin_sidebar #admin_navigation_button {
     font-size: 14px;
+}
+
+#admin_sidebar[compact="true"] #admin_navigation_button {
+    font-size: 11px;
+    min-height: 30px;
+    padding: 4px 6px;
+}
+
+#admin_header[compact="true"] #page_title {
+    font-size: 16px;
 }
 
 #nir_analysis_page QLabel,
@@ -1505,8 +1594,6 @@ QLabel#section_title,
 .section_title,
 #section_title,
 #admin_accounts_heading,
-#pricing_panel_heading,
-#pricing_section_title,
 #bean_sheet_table_title {
     font-size: 20px;
 }
@@ -1519,3 +1606,153 @@ APP_STYLE = re.sub(
     ),
     APP_STYLE,
 )
+
+APP_STYLE += """
+#pricing_settings_page QLabel,
+#pricing_settings_page QLineEdit,
+#pricing_settings_page QDoubleSpinBox,
+#pricing_settings_page QPushButton {
+    font-size: 30px;
+}
+
+#pricing_settings_page QLabel#page_title {
+    font-size: 42px;
+}
+
+#pricing_settings_page QLabel#pricing_panel_heading {
+    font-size: 35px;
+}
+
+#pricing_settings_page QLabel#pricing_grade_column_heading,
+#pricing_settings_page QPushButton#pricing_save_inputs_button,
+#pricing_settings_page QPushButton#pricing_calibration_continue_button {
+    font-size: 30px;
+}
+
+#pricing_settings_page QLabel#settings_description,
+#pricing_settings_page QLabel#pricing_note {
+    font-size: 22px;
+}
+
+#pricing_settings_page QLabel#pricing_total_result[result_state="status"] {
+    font-size: 30px;
+}
+
+#pricing_settings_page QLineEdit,
+#pricing_settings_page QDoubleSpinBox {
+    min-height: 66px;
+    padding: 12px;
+}
+
+#pricing_settings_page QPushButton {
+    min-height: 78px;
+    padding: 14px 18px;
+}
+"""
+
+APP_STYLE += """
+#central_widget #right_side QLabel,
+#central_widget #right_side QLineEdit,
+#central_widget #right_side QDoubleSpinBox,
+#central_widget #right_side QSpinBox,
+#central_widget #right_side QComboBox,
+#central_widget #right_side QTextEdit,
+#central_widget #right_side QPlainTextEdit,
+#central_widget #right_side QPushButton,
+#central_widget #right_side QCheckBox,
+#central_widget #right_side QRadioButton,
+#central_widget #right_side QTableWidget,
+#central_widget #right_side QTableView,
+#central_widget #right_side QHeaderView::section,
+#central_widget #right_side QTabBar::tab,
+#central_widget #sidebar QLabel,
+#central_widget #sidebar QPushButton,
+#central_widget #header QLabel,
+#central_widget #header QPushButton {
+    font-size: 30px;
+}
+
+#central_widget #right_side #dashboard QLabel#page_title,
+#central_widget #right_side #bean_data_sheet_page QLabel#bean_sheet_title,
+#central_widget #right_side #batch_history_page QLabel#page_title,
+#central_widget #right_side #pricing_settings_page QLabel#page_title,
+#central_widget #right_side #header QLabel#page_title {
+    font-size: 42px;
+}
+
+#central_widget #sidebar QLabel#logo_title {
+    font-size: 35px;
+}
+
+#central_widget #right_side #dashboard QLabel#dashboard_subtitle,
+#central_widget #right_side #bean_data_sheet_page QLabel#bean_sheet_description,
+#central_widget #right_side #batch_history_page QLabel#settings_description,
+#central_widget #right_side #pricing_settings_page QLabel#settings_description,
+#central_widget #right_side #pricing_settings_page QLabel#pricing_note,
+#central_widget #sidebar QLabel#logo_subtitle {
+    font-size: 22px;
+}
+
+#central_widget #right_side #dashboard QLabel#card_title {
+    font-size: 35px;
+}
+
+#central_widget #right_side #dashboard QLabel#card_value {
+    font-size: 30px;
+}
+
+#central_widget #right_side #dashboard #start_button,
+#central_widget #right_side #dashboard #stop_button {
+    font-size: 35px;
+}
+
+#central_widget #right_side #dashboard QLabel#card_unit {
+    font-size: 25px;
+}
+
+#central_widget #right_side #bean_data_sheet_page
+    QPushButton#bean_sheet_tab,
+#central_widget #right_side #bean_data_sheet_page
+    QTableWidget#bean_data_table QHeaderView,
+#central_widget #right_side #bean_data_sheet_page
+    QTableWidget#bean_data_table QHeaderView::section {
+    font-size: 25px;
+}
+
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_summary_title {
+    font-size: 30px;
+}
+
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_summary_value {
+    font-size: 30px;
+}
+
+#central_widget #right_side #bean_data_sheet_page
+    QTableWidget#bean_data_table {
+    font-size: 30px;
+}
+
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_table_title {
+    font-size: 35px;
+}
+
+#central_widget #right_side #batch_history_page
+    QTableWidget#batch_history_table QHeaderView,
+#central_widget #right_side #batch_history_page
+    QTableWidget#batch_history_table QHeaderView::section {
+    font-size: 25px;
+}
+
+#central_widget #right_side #batch_history_page
+    QTableWidget#batch_history_table {
+    font-size: 25px;
+}
+
+#central_widget #right_side #pricing_settings_page
+    QLabel#pricing_panel_heading {
+    font-size: 35px;
+}
+"""

@@ -1,6 +1,8 @@
+from collections.abc import Mapping
+from typing import Any
+
 from PySide6.QtWidgets import (
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QFrame,
     QHeaderView,
@@ -9,7 +11,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from .animated_button import AnimatedButton
 
 
 class ResultsPage(QWidget):
@@ -18,6 +19,7 @@ class ResultsPage(QWidget):
         self.setObjectName("results_page")
         dashboard.weight_readings_changed.connect(self.update_weights)
         dashboard.bean_data_updated.connect(self.update_bean_count)
+        self.current_bean_id: str = "--"
         self.setup_ui()
         self.update_bean_count(
             {"bean_count": dashboard.total_bean_count}
@@ -63,8 +65,8 @@ class ResultsPage(QWidget):
 
         self.table = QTableWidget()
         self.table.setObjectName("results_table")
-        self.table.setColumnCount(1)
-        self.table.setHorizontalHeaderLabels(["Good Bean Weight"])
+        self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(["Bean ID", "Good Bean Weight"])
         self.table.setRowCount(0)
         self.table.setMinimumHeight(220)
         self.table.horizontalHeader().setSectionsMovable(False)
@@ -74,21 +76,19 @@ class ResultsPage(QWidget):
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
 
-        actions = QHBoxLayout()
-        actions.addStretch()
-        report_btn = AnimatedButton("GENERATE REPORT")
-        report_btn.setObjectName("settings_save_button")
-        export_btn = AnimatedButton("EXPORT CSV")
-        export_btn.setObjectName("settings_reset_button")
-        actions.addWidget(report_btn)
-        actions.addWidget(export_btn)
-        layout.addLayout(actions)
         layout.addStretch()
 
-    def update_bean_count(self, bean_data):
+    def update_bean_count(self, bean_data: Mapping[str, Any]) -> None:
         self.total_seeds_value.setText(f"{bean_data['bean_count']:,}")
+        self.current_bean_id = str(bean_data.get("bean_id") or "--")
+        if self.table.rowCount():
+            self.table.setItem(
+                0,
+                0,
+                QTableWidgetItem(str(self.current_bean_id)),
+            )
 
-    def update_weights(self, good_weight_grams):
+    def update_weights(self, good_weight_grams: float | None) -> None:
         if good_weight_grams is None:
             self.table.setRowCount(0)
             return
@@ -96,5 +96,10 @@ class ResultsPage(QWidget):
         self.table.setItem(
             0,
             0,
+            QTableWidgetItem(str(self.current_bean_id)),
+        )
+        self.table.setItem(
+            0,
+            1,
             QTableWidgetItem(f"{good_weight_grams:.2f} g"),
         )

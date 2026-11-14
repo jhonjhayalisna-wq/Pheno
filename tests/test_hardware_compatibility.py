@@ -13,6 +13,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -64,6 +65,9 @@ class FakeDashboard(QWidget):
         self.camera_stop_count = 0
         self.start_system_button = QPushButton()
         self.stop_system_button = QPushButton()
+        self.middle_layout = QHBoxLayout(self)
+        self.camera_container = QWidget()
+        self.middle_layout.addWidget(self.camera_container)
         self.camera_capture = None
         self.camera_connected = False
         self.arduino_connected = False
@@ -171,6 +175,184 @@ class HardwareCompatibilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.application = QApplication.instance() or QApplication([])
+
+    def test_main_window_uses_requested_system_font_tiers(self):
+        previous_style = self.application.styleSheet()
+        self.application.setStyleSheet(APP_STYLE)
+        self.addCleanup(self.application.setStyleSheet, previous_style)
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window.resize(1100, 700)
+        window.show()
+        self.application.processEvents()
+        self.assertEqual(window.sidebar.width(), 300)
+
+        page_titles = (
+            window.dashboard_page.findChild(QLabel, "page_title"),
+            window.bean_data_sheet_page.findChild(
+                QLabel,
+                "bean_sheet_title",
+            ),
+            window.batch_history_page.findChild(QLabel, "page_title"),
+            window.pricing_page.findChild(QLabel, "page_title"),
+        )
+        self.assertTrue(
+            all(title.font().pixelSize() == 42 for title in page_titles)
+        )
+        self.assertEqual(
+            page_titles[0].mapTo(window, QPoint(0, 0)).y(),
+            page_titles[1].mapTo(window, QPoint(0, 0)).y(),
+        )
+        dashboard_card_top = window.dashboard_page.cards[0].mapTo(
+            window,
+            QPoint(0, 0),
+        ).y()
+        dashboard_card_bottom = (
+            dashboard_card_top + window.dashboard_page.cards[0].height()
+        )
+        self.assertGreater(
+            dashboard_card_top,
+            page_titles[0].mapTo(window, QPoint(0, 0)).y(),
+        )
+        self.assertGreater(
+            window.dashboard_page.start_system_button.mapTo(
+                window,
+                QPoint(0, 0),
+            ).y(),
+            dashboard_card_bottom + 20,
+        )
+        self.assertEqual(
+            window.dashboard_page.start_system_button.mapTo(
+                window,
+                QPoint(0, 0),
+            ).y(),
+            window.dashboard_page.stop_system_button.mapTo(
+                window,
+                QPoint(0, 0),
+            ).y(),
+        )
+        self.assertEqual(
+            window.findChild(QLabel, "logo_title").font().pixelSize(),
+            35,
+        )
+        self.assertEqual(window.dashboard_button.font().pixelSize(), 30)
+        self.assertEqual(
+            window.header.findChild(QLabel, "page_title")
+            .font()
+            .pixelSize(),
+            42,
+        )
+        self.assertEqual(window.status_text.font().pixelSize(), 20)
+        self.assertEqual(
+            window.pricing_page.findChild(
+                QLabel,
+                "pricing_panel_heading",
+            ).font().pixelSize(),
+            35,
+        )
+        self.assertEqual(
+            window.pricing_page.save_inputs_button.font().pixelSize(),
+            30,
+        )
+        self.assertEqual(
+            window.dashboard_page.findChild(
+                QLabel,
+                "dashboard_subtitle",
+            ).font().pixelSize(),
+            22,
+        )
+        self.assertTrue(
+            all(
+                label.font().pixelSize() == 35
+                for label in window.dashboard_page.findChildren(
+                    QLabel,
+                    "card_title",
+                )
+            )
+        )
+        self.assertTrue(
+            all(
+                label.font().pixelSize() == 30
+                for label in window.dashboard_page.findChildren(
+                    QLabel,
+                    "card_value",
+                )
+            )
+        )
+        self.assertTrue(
+            all(
+                label.font().pixelSize() == 25
+                for label in window.dashboard_page.findChildren(
+                    QLabel,
+                    "card_unit",
+                )
+            )
+        )
+        self.assertEqual(
+            window.dashboard_page.start_system_button.font().pixelSize(),
+            35,
+        )
+        self.assertEqual(
+            window.dashboard_page.stop_system_button.font().pixelSize(),
+            35,
+        )
+        current_batch = window.bean_data_sheet_page
+        self.assertEqual(
+            current_batch.findChild(
+                QLabel,
+                "bean_sheet_title",
+            ).font().pixelSize(),
+            42,
+        )
+        self.assertTrue(
+            all(
+                label.font().pixelSize() == 30
+                for label in current_batch.findChildren(
+                    QLabel,
+                    "bean_sheet_summary_title",
+                )
+            )
+        )
+        self.assertTrue(
+            all(
+                label.font().pixelSize() == 30
+                for label in current_batch.findChildren(
+                    QLabel,
+                    "bean_sheet_summary_value",
+                )
+            )
+        )
+        self.assertTrue(
+            all(
+                tab.font().pixelSize() == 25
+                for tab in current_batch.table_tabs.values()
+            )
+        )
+        self.assertEqual(
+            current_batch.data_table.font().pixelSize(),
+            30,
+        )
+        self.assertEqual(
+            current_batch.data_table.horizontalHeader().font().pixelSize(),
+            25,
+        )
+        self.assertEqual(
+            current_batch.findChild(
+                QLabel,
+                "bean_sheet_table_title",
+            ).font().pixelSize(),
+            35,
+        )
+        batch_history = window.batch_history_page
+        self.assertEqual(len(batch_history.COLUMNS), 9)
+        self.assertEqual(
+            batch_history.data_table.font().pixelSize(),
+            25,
+        )
+        self.assertEqual(
+            batch_history.data_table.horizontalHeader().font().pixelSize(),
+            25,
+        )
 
     def test_camera_unavailable_message_uses_readable_theme_colors_and_fonts(self):
         previous_style = self.application.styleSheet()
@@ -305,10 +487,13 @@ class HardwareCompatibilityTests(unittest.TestCase):
             )
         )
 
-    def test_admin_weight_analysis_displays_good_bean_weight_only(self):
+    def test_admin_weight_analysis_displays_bean_id_and_good_bean_weight(self):
         dashboard = FakeDashboard()
         page = ResultsPage(dashboard)
 
+        dashboard.bean_data_updated.emit(
+            {"bean_count": 1, "bean_id": "B-0001"}
+        )
         dashboard.weight_readings_changed.emit(1250.0)
 
         self.assertEqual(page.table.rowCount(), 1)
@@ -317,11 +502,14 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 page.table.horizontalHeaderItem(column).text()
                 for column in range(page.table.columnCount())
             ],
-            ["Good Bean Weight"],
+            ["Bean ID", "Good Bean Weight"],
         )
         self.assertEqual(
-            [page.table.item(0, 0).text()],
-            ["1250.00 g"],
+            [
+                page.table.item(0, 0).text(),
+                page.table.item(0, 1).text(),
+            ],
+            ["B-0001", "1250.00 g"],
         )
         page.close()
 
@@ -894,7 +1082,21 @@ class HardwareCompatibilityTests(unittest.TestCase):
             (preview_width, preview_width * 16 // 9),
         )
         self.assertEqual(dashboard.layout().contentsMargins().top(), 0)
-        self.assertEqual(dashboard.layout().itemAt(0).layout().spacing(), 0)
+        heading_cards_layout = dashboard.layout().itemAt(0).layout()
+        self.assertEqual(heading_cards_layout.spacing(), 8)
+        self.assertEqual(
+            heading_cards_layout.itemAt(0).layout().spacing(),
+            0,
+        )
+        subtitle_bottom = dashboard.dashboard_subtitle.mapTo(
+            dashboard,
+            QPoint(0, dashboard.dashboard_subtitle.height()),
+        ).y()
+        first_card_top = dashboard.cards[0].mapTo(
+            dashboard,
+            QPoint(0, 0),
+        ).y()
+        self.assertEqual(first_card_top - subtitle_bottom, 8)
         self.assertEqual(dashboard.cards_layout.horizontalSpacing(), 12)
         self.assertEqual(dashboard.cards_layout.verticalSpacing(), 12)
         for card in dashboard.cards:
@@ -1349,10 +1551,11 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertTrue(page.pns_score_input.isReadOnly())
         self.assertEqual(page.pns_score_input.text(), "")
         self.assertEqual(page.pns_grade_label.text(), "")
+        page.pns_grade_score_inputs["B"].setText("80")
 
         page.set_pns_sample_data(105, 4, 5, 4)
         self.assertEqual(page.pns_score_input.text(), "80")
-        self.assertEqual(page.pns_grade_label.text(), "2B")
+        self.assertEqual(page.pns_grade_label.text(), "B")
         self.assertIsNone(
             page.findChild(QLineEdit, "pricing_pns_bean_count_input")
         )
@@ -1360,32 +1563,136 @@ class HardwareCompatibilityTests(unittest.TestCase):
             page.set_pns_sample_data(100, 40, 40, 30)
         page.deleteLater()
 
+    def test_grade_scores_are_user_entered_and_drive_pricing(self):
+        page = PricingSettingsPage()
+        labels = {
+            label.text(): label
+            for label in page.findChildren(QLabel)
+        }
+        self.assertEqual(
+            labels["MOISTURE\nSCORE"].objectName(),
+            "pricing_grade_column_heading",
+        )
+        self.assertEqual(
+            labels["PNS SCORE"].objectName(),
+            "pricing_grade_column_heading",
+        )
+        self.assertEqual(
+            labels["GRADE"].objectName(),
+            "pricing_grade_column_heading",
+        )
+        self.assertEqual(
+            [
+                label.text()
+                for label in page.findChildren(QLabel, "pricing_grade_badge")
+            ],
+            ["A", "B", "C"],
+        )
+        self.assertEqual(
+            page.findChild(QLabel, "pricing_input_prefix").text(),
+            "₱",
+        )
+        self.assertEqual(
+            page.findChild(QLabel, "pricing_input_suffix").text(),
+            "pesos/kg",
+        )
+        grade_fields = (
+            *page.moisture_grade_score_inputs.values(),
+            *page.pns_grade_score_inputs.values(),
+        )
+        self.assertEqual(len(grade_fields), 6)
+        for field in grade_fields:
+            self.assertEqual(field.text(), "")
+            self.assertEqual(field.placeholderText(), "0 to 100")
+            self.assertEqual(field.validator().bottom(), 0)
+            self.assertEqual(field.validator().top(), 100)
+
+        page.moisture_grade_score_inputs["A"].setText("100")
+        page.moisture_grade_score_inputs["B"].setText("95")
+        page.moisture_grade_score_inputs["C"].setText("90")
+        page.pns_grade_score_inputs["A"].setText("100")
+        page.pns_grade_score_inputs["B"].setText("95")
+        page.pns_grade_score_inputs["C"].setText("90")
+        page.base_price_input.setText("200")
+
+        page.set_grading_data(7.5, 100)
+        self.assertEqual(page.moisture_score_input.text(), "100")
+        self.assertEqual(page.pns_score_input.text(), "100")
+        page.set_current_weight(1)
+        page.save_inputs_button.click()
+        self.assertEqual(page.total_price_result.text(), "₱ 200.00")
+
+        page.set_grading_data(5.9, 105)
+        self.assertEqual(page.moisture_score_input.text(), "95")
+        self.assertEqual(page.pns_score_input.text(), "95")
+        self.assertEqual(page.total_price_result.text(), "₱ 190.00")
+
+        page.set_grading_data(7.51, 121)
+        self.assertEqual(page.moisture_score_input.text(), "90")
+        self.assertEqual(page.pns_score_input.text(), "")
+        self.assertEqual(page.total_price_result.text(), "₱ —")
+        page.deleteLater()
+
+    def test_moisture_grade_uses_average_of_good_beans(self):
+        bean_page = BeanDataSheetPage()
+        pricing_page = PricingSettingsPage()
+        bean_page.grading_data_updated.connect(
+            pricing_page.set_grading_data
+        )
+        pricing_page.moisture_grade_score_inputs["A"].setText("100")
+        pricing_page.moisture_grade_score_inputs["B"].setText("95")
+
+        bean_page.update_dashboard_metrics(
+            {
+                "bean_id": "good-bean",
+                "bean_count": 1,
+                "moisture": 7.0,
+                "quality": "GOOD",
+            }
+        )
+        bean_page.update_dashboard_metrics(
+            {
+                "bean_id": "moldy-bean",
+                "bean_count": 2,
+                "moisture": 5.0,
+                "quality": "MOLDY",
+            }
+        )
+
+        self.assertEqual(bean_page.avg_moisture_value.text(), "6.00%")
+        self.assertEqual(bean_page.current_passed_average_moisture, 7.0)
+        self.assertEqual(pricing_page.current_moisture_grade, "A")
+        self.assertEqual(pricing_page.moisture_score_input.text(), "100")
+        bean_page.deleteLater()
+        pricing_page.deleteLater()
+
     def test_pricing_score_weights_always_total_one_hundred_percent(self):
         pricing_page = PricingSettingsPage()
+        pricing_page.pns_grade_score_inputs["C"].setText("90")
         pricing_page.show()
         self.application.processEvents()
         effect_labels = {
             label.text(): label
             for label in pricing_page.findChildren(QLabel)
-            if label.text() in ("Moisture Content", "PNS Grade")
+            if label.text() in ("Moisture content", "PNS grade")
         }
-        moisture_effect_name = effect_labels["Moisture Content"]
-        pns_effect_name = effect_labels["PNS Grade"]
+        moisture_effect_name = effect_labels["Moisture content"]
+        pns_effect_name = effect_labels["PNS grade"]
         pricing_page.moisture_effect_label.adjustSize()
         pricing_page.pns_effect_label.adjustSize()
-        self.assertEqual(moisture_effect_name.text(), "Moisture Content")
-        self.assertEqual(pns_effect_name.text(), "PNS Grade")
+        self.assertEqual(moisture_effect_name.text(), "Moisture content")
+        self.assertEqual(pns_effect_name.text(), "PNS grade")
         self.assertGreater(pns_effect_name.x(), moisture_effect_name.x())
         self.assertEqual(pns_effect_name.y(), moisture_effect_name.y())
         self.assertEqual(
             pricing_page.moisture_effect_label.x(),
             moisture_effect_name.x(),
         )
-        self.assertGreater(
+        self.assertLess(
             pricing_page.moisture_effect_label.y(),
             pricing_page.moisture_effect_slider.y(),
         )
-        self.assertGreater(
+        self.assertLess(
             pricing_page.pns_effect_label.y(),
             pricing_page.moisture_effect_slider.y(),
         )
@@ -1408,19 +1715,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual(
             pricing_page.total_price_result.text(),
-            "",
-        )
-        self.assertEqual(
-            pricing_page.moisture_contribution_result.text(),
-            "",
-        )
-        self.assertEqual(
-            pricing_page.pns_contribution_result.text(),
-            "",
-        )
-        self.assertEqual(
-            pricing_page.unit_price_result.text(),
-            "",
+            "₱ —",
         )
         self.assertEqual(pricing_page.weight_input.text(), "")
         self.assertTrue(pricing_page.weight_input.isReadOnly())
@@ -1437,13 +1732,11 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(pricing_page.moisture_effect_label.text(), "35%")
         self.assertEqual(pricing_page.pns_effect_label.text(), "65%")
         pricing_page.base_price_input.setText("200")
-        pricing_page.moisture_score_input.setText("88")
+        pricing_page.moisture_grade_score_inputs["A"].setText("88")
+        pricing_page.set_grading_data(7.0, 115)
         pricing_page.set_pns_sample_data(115, 0, 0, 0)
         self.assertEqual(pricing_page.pns_score_input.text(), "90")
-        self.assertEqual(pricing_page.moisture_contribution_result.text(), "30.80")
-        self.assertEqual(pricing_page.pns_contribution_result.text(), "58.50")
-        self.assertEqual(pricing_page.unit_price_result.text(), "₱ 178.60 / kg")
-        self.assertEqual(
+        self.assertFalse(
             {
                 label.text()
                 for label in pricing_page.findChildren(QLabel)
@@ -1451,22 +1744,15 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 {
                     "Overall Moisture Score",
                     "Overall PNS Score",
-                    "Current Weight (kg)",
                     "Price Per Kilo",
                 }
-            ),
-            {
-                "Overall Moisture Score",
-                "Overall PNS Score",
-                "Current Weight (kg)",
-                "Price Per Kilo",
-            },
+            )
         )
         self.assertNotIn(
             "Weighted quality score",
             {label.text() for label in pricing_page.findChildren(QLabel)},
         )
-        self.assertEqual(pricing_page.total_price_result.text(), "")
+        self.assertEqual(pricing_page.total_price_result.text(), "₱ —")
         pricing_page.set_current_weight(1)
         pricing_page.save_inputs_button.click()
         self.assertEqual(pricing_page.total_price_result.text(), "₱ 178.60")
@@ -1475,7 +1761,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
     def test_pricing_page_updates_from_entered_values(self):
         page = PricingSettingsPage()
         page.base_price_input.setText("200")
-        page.moisture_score_input.setText("88")
+        page.moisture_grade_score_inputs["A"].setText("88")
+        page.set_grading_data(7.0, 115)
+        page.pns_grade_score_inputs["C"].setText("90")
         page.set_pns_sample_data(115, 0, 0, 0)
         weight_kg = Dashboard.parse_load_cell_weight_kg(
             "Load Cell 1: 125.00 g"
@@ -1483,10 +1771,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page.set_current_weight(weight_kg)
         self.assertEqual(page.weight_input.text(), "0.125")
         page.set_current_weight(None)
-        self.assertEqual(page.unit_price_result.text(), "₱ 178.00 / kg")
-        self.assertEqual(page.total_price_result.text(), "")
+        self.assertEqual(page.total_price_result.text(), "₱ —")
         page.save_inputs_button.click()
-        self.assertEqual(page.total_price_result.text(), "")
+        self.assertEqual(page.total_price_result.text(), "₱ —")
         page.set_current_weight(1)
         self.assertEqual(page.total_price_result.text(), "₱ 178.00")
         page.base_price_input.setText("250")
@@ -1494,17 +1781,18 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page.set_current_weight(2)
         self.assertEqual(page.total_price_result.text(), "₱ 445.00")
         page.moisture_effect_slider.setValue(35)
-        self.assertEqual(page.unit_price_result.text(), "₱ 223.25 / kg")
         self.assertEqual(page.total_price_result.text(), "₱ 446.50")
         page.set_current_weight(None)
         self.assertEqual(page.weight_input.text(), "")
-        self.assertEqual(page.total_price_result.text(), "")
+        self.assertEqual(page.total_price_result.text(), "₱ —")
         page.deleteLater()
 
     def test_pricing_score_and_weight_fields_accept_typed_decimal_values(self):
         page = PricingSettingsPage()
         page.base_price_input.setText("200.75")
-        page.moisture_score_input.setText("88.5")
+        page.moisture_grade_score_inputs["A"].setText("88.5")
+        page.set_grading_data(7.0, 115)
+        page.pns_grade_score_inputs["C"].setText("90")
         page.set_pns_sample_data(115, 0, 0, 0)
         page.set_current_weight(2.5)
         self.assertEqual(page.base_price_input.text(), "200.75")
@@ -1516,34 +1804,107 @@ class HardwareCompatibilityTests(unittest.TestCase):
             2,
         )
         self.assertEqual(page.pns_score_input.text(), "90")
-        self.assertEqual(page.unit_price_result.text(), "₱ 179.17 / kg")
-        self.assertEqual(page.total_price_result.text(), "")
+        self.assertEqual(page.total_price_result.text(), "₱ —")
         page.save_inputs_button.click()
         self.assertEqual(page.total_price_result.text(), "₱ 447.92")
         page.deleteLater()
 
-    def test_pricing_total_is_not_shown_when_scores_are_missing(self):
+    def test_pricing_total_shows_placeholder_when_scores_are_missing(self):
         page = PricingSettingsPage()
         page.base_price_input.setText("200")
         self.assertEqual(
             page.total_price_result.text(),
-            "",
+            "₱ —",
         )
         page.save_inputs_button.click()
         self.assertEqual(
             page.total_price_result.text(),
-            "",
+            "₱ —",
         )
         page.deleteLater()
 
     def test_pricing_result_keeps_total_card_and_calibration_controls(self):
+        previous_style = self.application.styleSheet()
+        self.application.setStyleSheet(APP_STYLE)
+        self.addCleanup(self.application.setStyleSheet, previous_style)
         page = PricingSettingsPage()
-        self.assertIsNotNone(
-            page.findChild(QWidget, "pricing_total_card")
+        page.setStyleSheet(APP_STYLE)
+        page.resize(1017, 700)
+        page.show()
+        self.application.processEvents()
+        controls_panel, result_panel = page.findChildren(
+            QWidget,
+            "pricing_panel",
         )
-        self.assertGreaterEqual(
+        self.assertLessEqual(
+            abs(controls_panel.width() - result_panel.width()),
+            1,
+        )
+        self.assertEqual(
+            [
+                label.text()
+                for label in page.findChildren(
+                    QLabel,
+                    "pricing_panel_heading",
+                )
+            ],
+            ["Pricing controls", "Grade Criteria"],
+        )
+        self.assertEqual(
+            page.findChildren(QWidget, "pricing_results_divider"),
+            [],
+        )
+        grade_a_badge = next(
+            label
+            for label in page.findChildren(QLabel, "pricing_grade_badge")
+            if label.text() == "A"
+        )
+        grade_column_centers = [
+            widget.mapTo(result_panel, widget.rect().center()).x()
+            for widget in (
+                grade_a_badge,
+                page.moisture_grade_score_inputs["A"],
+                page.pns_grade_score_inputs["A"],
+            )
+        ]
+        self.assertLessEqual(
+            abs(
+                (grade_column_centers[1] - grade_column_centers[0])
+                - (grade_column_centers[2] - grade_column_centers[1])
+            ),
+            1,
+        )
+        total_card = page.findChild(QWidget, "pricing_total_card")
+        total_label = page.findChild(QLabel, "pricing_total_label")
+        if total_card is None:
+            self.fail("Total batch value card was not created.")
+        if total_label is None:
+            self.fail("Total batch value label was not created.")
+        self.assertEqual(
+            page.save_inputs_button.height(),
+            total_card.height(),
+        )
+        self.assertEqual(
+            page.save_inputs_button.y(),
+            total_card.y(),
+        )
+        self.assertEqual(page.total_price_result.font().pixelSize(), 30)
+        self.assertEqual(page.save_inputs_button.font().pixelSize(), 30)
+        self.assertEqual(
+            page.total_price_result.alignment(),
+            Qt.AlignmentFlag.AlignCenter,
+        )
+        self.assertEqual(
+            total_label.alignment(),
+            Qt.AlignmentFlag.AlignCenter,
+        )
+        self.assertEqual(
+            controls_panel.width() - page.save_inputs_button.width(),
+            result_panel.width() - total_card.width(),
+        )
+        self.assertEqual(
             len(page.findChildren(QWidget, "pricing_result_row")),
-            3,
+            0,
         )
         self.assertIsNone(
             page.findChild(QWidget, "pricing_arduino_status")
@@ -1566,15 +1927,234 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(submitted, ["K1,250.00"])
         page.deleteLater()
 
+    def test_pricing_panels_expand_to_fill_tall_viewport(self):
+        previous_style = self.application.styleSheet()
+        self.application.setStyleSheet(APP_STYLE)
+        self.addCleanup(self.application.setStyleSheet, previous_style)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        page = PricingSettingsPage()
+        scroll.setWidget(page)
+        scroll.resize(1106, 682)
+        scroll.show()
+        self.addCleanup(scroll.deleteLater)
+        self.application.processEvents()
+
+        panels = page.findChildren(QWidget, "pricing_panel")
+        self.assertEqual(len(panels), 2)
+        self.assertGreaterEqual(page.width(), scroll.viewport().width())
+        self.assertGreaterEqual(page.height(), scroll.viewport().height())
+        self.assertGreater(scroll.horizontalScrollBar().maximum(), 0)
+        self.assertGreater(scroll.verticalScrollBar().maximum(), 0)
+        self.assertEqual(panels[0].height(), panels[1].height())
+        self.assertEqual(panels[0].width(), panels[1].width())
+        self.assertGreaterEqual(
+            panels[1].height(),
+            panels[1].minimumSizeHint().height(),
+        )
+        grade_panel = next(
+            panel
+            for panel in panels
+            if panel.findChild(
+                QLabel,
+                "pricing_panel_heading",
+            ).text()
+            == "Grade Criteria"
+        )
+        grade_headings = grade_panel.findChildren(
+            QLabel,
+            "pricing_grade_column_heading",
+        )
+        self.assertEqual(len(grade_headings), 3)
+        grade_panel_heading = grade_panel.findChild(
+            QLabel,
+            "pricing_panel_heading",
+        )
+        self.assertEqual(
+            grade_headings[0].mapTo(
+                grade_panel,
+                QPoint(0, 0),
+            ).y()
+            - grade_panel_heading.mapTo(
+                grade_panel,
+                QPoint(0, grade_panel_heading.height()),
+            ).y(),
+            40,
+        )
+        self.assertTrue(
+            all(heading.font().pixelSize() == 30 for heading in grade_headings)
+        )
+        grade_badges = grade_panel.findChildren(
+            QLabel,
+            "pricing_grade_badge",
+        )
+        self.assertEqual(len(grade_badges), 3)
+        self.assertTrue(
+            all(
+                badge.width() > 48
+                and badge.height() > 48
+                and badge.font().pixelSize() == 30
+                for badge in grade_badges
+            )
+        )
+        grade_inputs = grade_panel.findChildren(
+            QLineEdit,
+            "pricing_grade_score_input",
+        )
+        self.assertEqual(len(grade_inputs), 6)
+        self.assertTrue(
+            all(
+                field.width() > 128
+                and field.height() > 50
+                and field.font().pixelSize() == 30
+                for field in grade_inputs
+            )
+        )
+        grade_row_positions = [
+            page.moisture_grade_score_inputs[grade].y()
+            for grade in ("A", "B", "C")
+        ]
+        grade_row_intervals = [
+            grade_row_positions[index + 1] - grade_row_positions[index]
+            for index in range(len(grade_row_positions) - 1)
+        ]
+        self.assertEqual(grade_row_intervals[0], grade_row_intervals[1])
+        self.assertGreater(
+            grade_row_intervals[0] - grade_inputs[0].height(),
+            16,
+        )
+        self.assertGreater(
+            grade_row_intervals[0],
+            page.moisture_grade_score_inputs["A"].height(),
+        )
+        description_names = {
+            "settings_description",
+            "pricing_note",
+        }
+        self.assertTrue(
+            all(
+                label.font().pixelSize() in {30, 35, 42}
+                for label in page.findChildren(QLabel)
+                if label.objectName() not in description_names
+            )
+        )
+        self.assertTrue(
+            all(
+                field.font().pixelSize() == 30
+                for field in page.findChildren(QLineEdit)
+            )
+        )
+        self.assertTrue(
+            all(
+                field.font().pixelSize() == 30
+                for field in page.findChildren(QDoubleSpinBox)
+            )
+        )
+        self.assertTrue(
+            all(
+                button.font().pixelSize() == 30
+                for button in page.findChildren(QPushButton)
+            )
+        )
+        self.assertEqual(
+            page.findChild(QLabel, "page_title").font().pixelSize(),
+            42,
+        )
+        self.assertIsNone(
+            page.findChild(QLabel, "pricing_panel_description")
+        )
+        controls_panel = next(
+            panel
+            for panel in panels
+            if panel.findChild(
+                QLabel,
+                "pricing_panel_heading",
+            ).text()
+            == "Pricing controls"
+        )
+        panel_heading = controls_panel.findChild(
+            QLabel,
+            "pricing_panel_heading",
+        )
+        form_label = controls_panel.findChild(
+            QLabel,
+            "pricing_form_label",
+        )
+        base_price_container = controls_panel.findChild(
+            QWidget,
+            "pricing_price_input_container",
+        )
+        self.assertEqual(panel_heading.font().pixelSize(), 35)
+        self.assertEqual(form_label.font().pixelSize(), 30)
+        self.assertEqual(
+            base_price_container.mapTo(
+                controls_panel,
+                QPoint(0, 0),
+            ).y()
+            - form_label.mapTo(
+                controls_panel,
+                QPoint(0, form_label.height()),
+            ).y(),
+            34,
+        )
+        self.assertLess(
+            form_label.mapTo(
+                controls_panel,
+                QPoint(0, 0),
+            ).y(),
+            controls_panel.height() // 2,
+        )
+        self.assertGreaterEqual(page.base_price_input.height(), 60)
+        input_container = base_price_container
+        effect_title = controls_panel.findChild(
+            QLabel,
+            "pricing_section_title",
+        )
+        def bottom(widget):
+            return widget.mapTo(
+                controls_panel,
+                QPoint(0, widget.height()),
+            ).y()
+
+        def top(widget):
+            return widget.mapTo(controls_panel, QPoint(0, 0)).y()
+
+        moisture_effect_name = next(
+            label
+            for label in controls_panel.findChildren(
+                QLabel,
+                "pricing_control_label",
+            )
+            if label.text() == "Moisture content"
+        )
+        self.assertEqual(
+            top(moisture_effect_name) - bottom(effect_title),
+            34,
+        )
+        self.assertEqual(
+            top(page.save_inputs_button)
+            - bottom(page.moisture_effect_slider),
+            40,
+        )
+        self.assertGreater(
+            top(effect_title) - bottom(input_container),
+            0,
+        )
+        self.assertEqual(
+            page.save_inputs_button.height(),
+            page.total_price_result.parentWidget().height(),
+        )
+
     def test_bean_data_current_summary_values_start_blank(self):
         page = BeanDataSheetPage()
         expected_titles = {
-            "Current Bean Number",
-            "Current PNS Sample Number",
-            "Current Good Bean Number",
-            "Current Weight",
-            "PNS Grade Summary",
-            "Moisture Content Grade Summary",
+            "Batch Number",
+            "Total Weight",
+            "PNS Grade",
+            "AVG Moisture Content Percentage",
+            "Moisture Classification",
+            "Total Moisture Score",
         }
         current_values = {}
         for card in page.findChildren(QWidget, "bean_sheet_summary_card"):
@@ -1599,13 +2179,54 @@ class HardwareCompatibilityTests(unittest.TestCase):
             )
             if title in expected_titles:
                 current_values[title] = value
-        self.assertEqual(current_values, {title: "" for title in expected_titles})
+        self.assertEqual(
+            current_values,
+            {
+                "Batch Number": "",
+                "Total Weight": "",
+                "PNS Grade": "",
+                "AVG Moisture Content Percentage": "",
+                "Moisture Classification": "",
+                "Total Moisture Score": "",
+            },
+        )
         self.assertFalse(page.empty_state.isVisible())
         self.assertEqual(page.empty_state.text(), "")
         page.deleteLater()
 
+    def test_bean_data_missing_values_remain_blank(self):
+        page = BeanDataSheetPage()
+        history_rows = []
+        page.batch_history_updated.connect(history_rows.extend)
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "202610260001",
+                "bean_count": 1,
+                "batch_weight_grams": None,
+                "moisture": None,
+                "quality": "GOOD",
+                "confidence": None,
+            }
+        )
+
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "")
+        self.assertEqual(page.avg_moisture_value.text(), "")
+        self.assertEqual(page.moisture_classification_value.text(), "")
+        self.assertEqual(page.total_moisture_score_value.text(), "")
+        self.assertEqual(page.data_table.item(0, 2).text(), "")
+        self.assertEqual(history_rows[0][2], "")
+
+        page.show_table("Moisture Content Sample")
+        self.assertEqual(page.data_table.item(0, 1).text(), "")
+        self.assertEqual(page.data_table.item(0, 2).text(), "")
+        self.assertEqual(page.data_table.item(0, 3).text(), "")
+        page.deleteLater()
+
     def test_bean_data_tables_update_from_dashboard_metrics(self):
         page = BeanDataSheetPage()
+        history_rows = []
+        page.batch_history_updated.connect(history_rows.extend)
         page.update_dashboard_metrics(
             {
                 "bean_id": "202610260001",
@@ -1613,24 +2234,22 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "batch_weight_grams": 125.5,
                 "moisture": None,
                 "quality": "GOOD",
+                "confidence": 0.84,
             }
         )
-        self.assertEqual(page.current_bean_number_value.text(), "1")
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "125.50 g")
 
         table = page.data_table
         self.assertEqual(table.rowCount(), 1)
         self.assertEqual(table.item(0, 0).text(), "202610260001")
-        self.assertEqual(table.item(0, 1).text(), "125.50")
-        self.assertEqual(table.item(0, 2).text(), "1")
-        self.assertEqual(table.item(0, 4).text(), "GOOD")
-        self.assertEqual(table.item(0, 5).text(), "100.00%")
-
-        page.show_table("PNS Grade Sample")
-        self.assertEqual(page.data_table.rowCount(), 1)
-        self.assertEqual(page.data_table.item(0, 3).text(), "1")
-        self.assertEqual(page.data_table.item(0, 4).text(), "1")
-        self.assertEqual(page.data_table.item(0, 2).text(), "1A")
-        self.assertEqual(page.data_table.item(0, 8).text(), "100")
+        self.assertEqual(table.item(0, 1).text(), "GOOD")
+        self.assertEqual(table.item(0, 2).text(), "84.0%")
+        self.assertEqual(table.columnCount(), 3)
+        self.assertNotIn("PNS Grade Sample", page.table_tabs)
+        self.assertEqual(page.pns_grade_value.text(), "A")
+        self.assertEqual(history_rows[0][0], "0001")
+        self.assertEqual(history_rows[0][3], "1A")
 
         page.update_dashboard_metrics(
             {
@@ -1639,24 +2258,15 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "batch_weight_grams": 251.0,
                 "moisture": None,
                 "quality": "MOLDY",
+                "confidence": 0.55,
             }
         )
-        self.assertEqual(page.current_bean_number_value.text(), "2")
         self.assertEqual(page.data_table.rowCount(), 2)
         self.assertEqual(page.data_table.item(1, 0).text(), "202610260002")
-        self.assertEqual(page.data_table.item(1, 3).text(), "2")
-        self.assertEqual(page.data_table.item(1, 2).text(), "Substandard")
-        self.assertEqual(page.data_table.item(1, 4).text(), "1")
-        self.assertEqual(page.data_table.item(1, 5).text(), "1")
-        self.assertEqual(page.data_table.item(1, 8).text(), "60")
-
-        page.show_table("Beans in 100g Sample")
-        self.assertEqual(page.data_table.item(0, 5).text(), "100.00%")
-        self.assertEqual(page.data_table.item(0, 6).text(), "0.00%")
-        self.assertEqual(page.data_table.item(0, 8).text(), "0.00%")
-        self.assertEqual(page.data_table.item(1, 5).text(), "0.00%")
-        self.assertEqual(page.data_table.item(1, 6).text(), "100.00%")
-        self.assertEqual(page.data_table.item(1, 8).text(), "0.00%")
+        self.assertEqual(page.data_table.item(1, 1).text(), "MOLDY")
+        self.assertEqual(page.data_table.item(1, 2).text(), "55.0%")
+        self.assertEqual(page.pns_grade_value.text(), "A")
+        self.assertEqual(history_rows[-1][3], "Substandard")
 
         page.update_dashboard_metrics(
             {
@@ -1665,10 +2275,11 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "batch_weight_grams": 376.5,
                 "moisture": None,
                 "quality": "INSECT-DAMAGED",
+                "confidence": 0.73,
             }
         )
-        self.assertEqual(page.data_table.item(2, 4).text(), "INSECT-DAMAGED")
-        self.assertEqual(page.data_table.item(2, 8).text(), "100.00%")
+        self.assertEqual(page.data_table.item(2, 1).text(), "INSECT-DAMAGED")
+        self.assertEqual(page.data_table.item(2, 2).text(), "73.0%")
 
         page.update_dashboard_metrics(
             {
@@ -1679,15 +2290,33 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "quality": "UNDEFINED",
             }
         )
-        self.assertEqual(page.current_bean_number_value.text(), "0")
-        page.show_table("PNS Grade Sample")
-        self.assertEqual(page.data_table.rowCount(), 3)
-        self.assertEqual(page.data_table.item(0, 0).text(), "202610260001")
+        self.assertEqual(page.batch_number_value.text(), "")
+        self.assertEqual(page.data_table.rowCount(), 0)
 
         page.show_table("Moisture Content Sample")
-        self.assertEqual(page.data_table.rowCount(), 3)
-        self.assertEqual(page.data_table.item(0, 0).text(), "202610260001")
-        self.assertEqual(page.data_table.item(0, 1).text(), "--")
+        self.assertEqual(page.data_table.rowCount(), 0)
+        page.deleteLater()
+
+    def test_current_batch_pns_grade_uses_bean_count_ranges(self):
+        page = BeanDataSheetPage()
+        for bean_count, expected_grade in (
+            (0, ""),
+            (1, "A"),
+            (100, "A"),
+            (101, "B"),
+            (110, "B"),
+            (111, "C"),
+            (120, "C"),
+            (121, ""),
+        ):
+            page.update_dashboard_metrics(
+                {
+                    "bean_id": f"bean-{bean_count}",
+                    "bean_count": bean_count,
+                    "quality": "MOLDY",
+                }
+            )
+            self.assertEqual(page.pns_grade_value.text(), expected_grade)
         page.deleteLater()
 
     def test_quality_counts_include_supported_defect_categories(self):
@@ -2151,10 +2780,25 @@ class HardwareCompatibilityTests(unittest.TestCase):
         with patch("GUI.main_window.Dashboard", FakeDashboard):
             window = MainWindow()
 
+        self.addCleanup(window.close)
+        window.resize(1100, 700)
+        window.show()
+        self.application.processEvents()
         self.assertEqual(window.status_text.text(), "SYSTEM NOT CONNECTED")
+        self.assertEqual(window.status_text.font().pixelSize(), 20)
+        self.assertEqual(
+            window.status_text.alignment(),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+        )
+        self.assertIs(window.status_text.parentWidget(), window.sidebar)
+        self.assertGreater(
+            window.status_text.y(),
+            window.sidebar.height() // 2,
+        )
         window.dashboard_page.arduino_connected = True
         window.dashboard_page.arduino_connection_changed.emit(True)
         self.assertEqual(window.status_text.text(), "SYSTEM CONNECTED")
+        self.assertEqual(window.status_text.font().pixelSize(), 20)
         window.dashboard_page.camera_status_changed.emit("NOT CONNECTED")
         self.assertEqual(window.status_text.text(), "SYSTEM CONNECTED")
 
@@ -2175,6 +2819,12 @@ class HardwareCompatibilityTests(unittest.TestCase):
     def test_normal_window_starts_on_dashboard_and_denies_admin_routes(self):
         with patch("GUI.main_window.Dashboard", FakeDashboard):
             window = MainWindow()
+        window.show()
+        self.application.processEvents()
+        window.resize(800, 480)
+        self.application.processEvents()
+        self.assertEqual(window.sidebar.width(), 176)
+        self.assertEqual(window.header.height(), 58)
 
         for index in range(window.pages.count()):
             scroll = window.pages.widget(index)
@@ -2220,26 +2870,30 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual(
             window.pages.count(),
-            3,
-            "Normal navigation should contain Dashboard, Pricing Settings, and Bean Data Sheet.",
+            4,
+            "Normal navigation should contain Dashboard, Current Batch, Batch History, and Pricing Settings.",
         )
         self.assertFalse(hasattr(window, "camera_page"))
         self.assertFalse(hasattr(window, "nir_page"))
         self.assertTrue(hasattr(window, "pricing_page"))
         self.assertIsNone(window.admin_panel)
         self.assertEqual(window.dashboard_page.camera_start_count, 0)
-        self.assertEqual(len(window.menu_buttons), 3)
+        self.assertEqual(len(window.menu_buttons), 4)
         self.assertEqual(
             window.menu_buttons[0].text().strip(),
             "Dashboard",
         )
         self.assertEqual(
             window.menu_buttons[1].text().strip(),
-            "Pricing Settings",
+            "Current Batch",
         )
         self.assertEqual(
             window.menu_buttons[2].text().strip(),
-            "Bean Data Sheet",
+            "Batch History",
+        )
+        self.assertEqual(
+            window.menu_buttons[3].text().strip(),
+            "Pricing Settings",
         )
         window.dashboard_page.start_system_button.click()
         self.assertEqual(window.dashboard_page.camera_start_count, 1)
@@ -2247,19 +2901,18 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(window.dashboard_page.camera_stop_count, 1)
         summary_area = window.bean_data_sheet_page.layout().itemAt(2).layout()
         self.assertIsInstance(summary_area, QHBoxLayout)
-        current_summary_column = summary_area.itemAt(0).layout()
-        grading_summary_row = summary_area.itemAt(1).layout()
-        self.assertIsInstance(current_summary_column, QVBoxLayout)
-        self.assertIsInstance(grading_summary_row, QHBoxLayout)
-        self.assertEqual(current_summary_column.count(), 4)
-        self.assertEqual(grading_summary_row.count(), 2)
+        self.assertIsNotNone(window.bean_data_sheet_page.live_camera_widget)
+        self.assertEqual(
+            window.bean_data_sheet_page.live_camera_widget.parentWidget(),
+            window.bean_data_sheet_page,
+        )
         window.change_page(1)
         self.assertEqual(window.pages.currentIndex(), 1)
         window.change_page(2)
         self.assertEqual(window.pages.currentIndex(), 2)
         self.assertEqual(
             window.bean_data_sheet_page.data_table.columnCount(),
-            9,
+            3,
         )
         self.assertEqual(
             [
@@ -2269,15 +2922,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 )
             ],
             [
-                "Bean ID",
-                "Accumulated Weight",
-                "Bean Count",
-                "PNS Sample ID",
+                "Bean Number",
                 "Condition",
-                "Good (%)",
-                "Moldy (%)",
-                "Slaty (%)",
-                "Defective (%)",
+                "Confidence",
             ],
         )
         header = window.bean_data_sheet_page.data_table.horizontalHeader()
@@ -2288,14 +2935,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 header.sectionResizeMode(column),
                 QHeaderView.ResizeMode.Stretch,
             )
-        weight_header = window.bean_data_sheet_page.data_table.horizontalHeaderItem(1)
-        self.assertLess(weight_header.font().pointSizeF(), 10)
-        window.bean_data_sheet_page.show_table("PNS Grade Sample")
-        self.assertEqual(
-            window.bean_data_sheet_page.data_table.columnCount(),
-            9,
-        )
-        self.assertEqual(window.bean_data_sheet_page.data_table.rowCount(), 0)
         window.bean_data_sheet_page.show_table("Moisture Content Sample")
         self.assertEqual(
             [
@@ -2312,7 +2951,11 @@ class HardwareCompatibilityTests(unittest.TestCase):
             ],
         )
         self.assertEqual(window.bean_data_sheet_page.data_table.rowCount(), 0)
-        for title in ("Beans in 100g Sample", "PNS Grade Sample"):
+        self.assertEqual(
+            window.batch_history_page.data_table.columnCount(),
+            len(window.batch_history_page.COLUMNS),
+        )
+        for title in ("Beans in 100g Sample",):
             window.bean_data_sheet_page.show_table(title)
             header = window.bean_data_sheet_page.data_table.horizontalHeader()
             for column in range(window.bean_data_sheet_page.data_table.columnCount()):
@@ -2321,7 +2964,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                     QHeaderView.ResizeMode.Stretch,
                 )
         window.change_page(3)
-        self.assertEqual(window.pages.currentIndex(), 2)
+        self.assertEqual(window.pages.currentIndex(), 3)
         window.close()
         window.deleteLater()
 

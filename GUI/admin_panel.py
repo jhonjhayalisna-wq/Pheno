@@ -3,7 +3,7 @@ from functools import partial
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QCloseEvent, QPalette
+from PySide6.QtGui import QColor, QCloseEvent, QPalette, QResizeEvent
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -577,6 +577,7 @@ class AdminControlPanel(QMainWindow):
         sidebar = QWidget()
         sidebar.setObjectName("admin_sidebar")
         sidebar.setFixedWidth(340)
+        self.admin_sidebar = sidebar
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(14, 14, 14, 12)
         heading = QLabel("ADMIN")
@@ -607,6 +608,12 @@ class AdminControlPanel(QMainWindow):
         ]
         self.dashboard.nir_message_received.connect(
             self.nir_page.append_serial_line
+        )
+        self.dashboard.bean_data_updated.connect(
+            self.nir_page.update_bean_data
+        )
+        self.nir_page.update_bean_data(
+            self.dashboard.get_bean_data_snapshot()
         )
         nir_classification_signal = getattr(
             self.dashboard,
@@ -673,6 +680,7 @@ class AdminControlPanel(QMainWindow):
         content_layout.setContentsMargins(0, 0, 0, 0)
         header = QWidget()
         header.setObjectName("admin_header")
+        self.admin_header = header
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(12, 6, 12, 6)
         title = QLabel("PhenoCoater Administrator")
@@ -683,6 +691,32 @@ class AdminControlPanel(QMainWindow):
         content_layout.addWidget(self.stack)
         layout.addWidget(content)
         self.change_page(0)
+        self._update_touch_layout()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._update_touch_layout()
+
+    def _update_touch_layout(self) -> None:
+        if not hasattr(self, "admin_sidebar") or not hasattr(
+            self,
+            "admin_header",
+        ):
+            return
+        compact = self.width() < 1000
+        narrow = self.width() < 720
+        self.admin_sidebar.setFixedWidth(
+            128 if narrow else 176 if compact else 260
+        )
+        self.admin_sidebar.setProperty("compact", compact)
+        self.admin_sidebar.style().unpolish(self.admin_sidebar)
+        self.admin_sidebar.style().polish(self.admin_sidebar)
+        self.admin_header.setFixedHeight(
+            48 if self.height() < 440 else 58 if compact else 74
+        )
+        self.admin_header.setProperty("compact", compact)
+        self.admin_header.style().unpolish(self.admin_header)
+        self.admin_header.style().polish(self.admin_header)
 
     def activate_admin_view(self) -> None:
         self.session.require_admin()

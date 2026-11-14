@@ -1,6 +1,7 @@
 import sys
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -22,6 +23,7 @@ try:
     from .auth import AdminCredentials, AdminSession, AuthStorageError
     from .bean_data_sheet import BeanDataSheetPage
     from .dashboard import Dashboard
+    from .history import BatchHistoryPage
     from .pricing import PricingSettingsPage
     from .touch_scrolling import enable_touch_scrolling
     from .touch_keyboard import install_touch_keyboard
@@ -32,6 +34,7 @@ except ImportError:
     from auth import AdminCredentials, AdminSession, AuthStorageError
     from bean_data_sheet import BeanDataSheetPage
     from dashboard import Dashboard
+    from history import BatchHistoryPage
     from pricing import PricingSettingsPage
     from touch_scrolling import enable_touch_scrolling
     from touch_keyboard import install_touch_keyboard
@@ -44,7 +47,7 @@ class MainWindow(QMainWindow):
         self.admin_session = AdminSession()
         self.admin_panel = None
         self.setWindowTitle('PhenoCoater - Cacao Seed Sorting & Grading System')
-        self.resize(1400, 850)
+        self.resize(1024, 600)
         self.setMinimumSize(640, 360)
         self.setup_ui()
         self.dashboard_page.start_system_button.clicked.connect(
@@ -54,11 +57,16 @@ class MainWindow(QMainWindow):
             self.dashboard_page.stop_system
         )
 
-    def resizeEvent(self, event):
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self.update_touch_layout()
-        if hasattr(self, 'dashboard_page'):
-            QTimer.singleShot(0, self.dashboard_page.update_responsive_layout)
+        responsive_update = getattr(
+            getattr(self, 'dashboard_page', None),
+            'update_responsive_layout',
+            None,
+        )
+        if responsive_update is not None:
+            QTimer.singleShot(0, responsive_update)
 
     def setup_ui(self):
         central_widget = QWidget()
@@ -72,7 +80,7 @@ class MainWindow(QMainWindow):
         sidebar = QWidget()
         sidebar.setObjectName('sidebar')
         self.sidebar = sidebar
-        sidebar.setFixedWidth(340)
+        sidebar.setFixedWidth(300)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(14, 14, 14, 12)
         sidebar_layout.setSpacing(5)
@@ -90,12 +98,14 @@ class MainWindow(QMainWindow):
         sidebar_layout.addSpacing(12)
 
         self.dashboard_button = self.create_menu_button('Dashboard')
+        self.current_batch_button = self.create_menu_button('Current Batch')
+        self.batch_history_button = self.create_menu_button('Batch History')
         self.pricing_button = self.create_menu_button('Pricing Settings')
-        self.bean_data_sheet_button = self.create_menu_button('Bean Data Sheet')
         self.menu_buttons = [
             self.dashboard_button,
+            self.current_batch_button,
+            self.batch_history_button,
             self.pricing_button,
-            self.bean_data_sheet_button,
         ]
 
         for button in self.menu_buttons:
@@ -106,10 +116,14 @@ class MainWindow(QMainWindow):
         sidebar_layout.addStretch()
 
         self.status_text = QLabel('SYSTEM NOT CONNECTED')
-        self.status_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_text.setObjectName('system_status')
+        self.status_text.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.status_text.setWordWrap(True)
         self.status_text.setStyleSheet("""
             color: #c0392b;
-            font-size: 18px;
+            font-size: 20px;
             font-weight: bold;
             padding: 5px;
         """)
@@ -159,7 +173,60 @@ class MainWindow(QMainWindow):
         dashboard_scroll.setWidget(self.dashboard_page)
         self.pages.addWidget(dashboard_scroll)
 
+        self.bean_data_sheet_page = BeanDataSheetPage()
+        camera_container = getattr(
+            self.dashboard_page,
+            "camera_container",
+            None,
+        )
+        middle_layout = getattr(
+            self.dashboard_page,
+            "middle_layout",
+            None,
+        )
+        if camera_container is not None and middle_layout is not None:
+            middle_layout.removeWidget(camera_container)
+            self.bean_data_sheet_page.set_live_camera_widget(
+                camera_container
+            )
+            dashboard_layout = self.dashboard_page.layout()
+            if isinstance(dashboard_layout, QVBoxLayout):
+                dashboard_layout.insertStretch(2, 1)
+                dashboard_layout.addStretch(1)
+        self.dashboard_page.bean_data_updated.connect(
+            self.bean_data_sheet_page.update_dashboard_metrics
+        )
+        bean_data_sheet_scroll = QScrollArea()
+        bean_data_sheet_scroll.setObjectName('bean_data_sheet_scroll')
+        bean_data_sheet_scroll.setWidgetResizable(True)
+        bean_data_sheet_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        enable_touch_scrolling(bean_data_sheet_scroll)
+        bean_data_sheet_scroll.setWidget(self.bean_data_sheet_page)
+        self.pages.addWidget(bean_data_sheet_scroll)
+
+        self.batch_history_page = BatchHistoryPage()
+        self.bean_data_sheet_page.batch_history_updated.connect(
+            self.batch_history_page.update_rows
+        )
+        self.bean_data_sheet_page.update_dashboard_metrics(
+            self.dashboard_page.get_bean_data_snapshot()
+        )
+        history_scroll = QScrollArea()
+        history_scroll.setObjectName('batch_history_scroll')
+        history_scroll.setWidgetResizable(True)
+        history_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        enable_touch_scrolling(history_scroll)
+        history_scroll.setWidget(self.batch_history_page)
+        self.pages.addWidget(history_scroll)
+
         self.pricing_page = PricingSettingsPage()
+        self.bean_data_sheet_page.grading_data_updated.connect(
+            self.pricing_page.set_grading_data
+        )
+        self.pricing_page.set_grading_data(
+            self.bean_data_sheet_page.current_passed_average_moisture,
+            self.bean_data_sheet_page.current_bean_count,
+        )
         self.dashboard_page.current_weight_changed.connect(
             self.pricing_page.set_current_weight
         )
@@ -183,41 +250,39 @@ class MainWindow(QMainWindow):
         pricing_scroll.setWidget(self.pricing_page)
         self.pages.addWidget(pricing_scroll)
 
-        self.bean_data_sheet_page = BeanDataSheetPage()
-        self.dashboard_page.bean_data_updated.connect(
-            self.bean_data_sheet_page.update_dashboard_metrics
-        )
-        self.bean_data_sheet_page.update_dashboard_metrics(
-            self.dashboard_page.get_bean_data_snapshot()
-        )
-        bean_data_sheet_scroll = QScrollArea()
-        bean_data_sheet_scroll.setObjectName('bean_data_sheet_scroll')
-        bean_data_sheet_scroll.setWidgetResizable(True)
-        bean_data_sheet_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        enable_touch_scrolling(bean_data_sheet_scroll)
-        bean_data_sheet_scroll.setWidget(self.bean_data_sheet_page)
-        self.pages.addWidget(bean_data_sheet_scroll)
-
         right_layout.addWidget(self.pages)
         main_layout.addWidget(sidebar)
         main_layout.addWidget(right_side)
 
         self.dashboard_button.clicked.connect(lambda: self.change_page(0))
-        self.pricing_button.clicked.connect(lambda: self.change_page(1))
-        self.bean_data_sheet_button.clicked.connect(lambda: self.change_page(2))
+        self.current_batch_button.clicked.connect(lambda: self.change_page(1))
+        self.batch_history_button.clicked.connect(lambda: self.change_page(2))
+        self.pricing_button.clicked.connect(lambda: self.change_page(3))
         self.update_touch_layout()
 
     def update_touch_layout(self):
-        if not hasattr(self, 'sidebar'):
+        if not hasattr(self, 'sidebar') or not hasattr(self, 'header'):
             return
         compact = self.width() < 1000
-        self.sidebar.setFixedWidth(260 if compact else 340)
+        narrow = self.width() < 720
+        self.sidebar.setFixedWidth(128 if narrow else 176 if compact else 300)
         self.sidebar.setProperty('compact', compact)
         self.sidebar.style().unpolish(self.sidebar)
         self.sidebar.style().polish(self.sidebar)
-        self.header.setFixedHeight(74 if self.height() < 600 else 86)
+        self.header.setProperty('compact', compact)
+        self.header.style().unpolish(self.header)
+        self.header.style().polish(self.header)
+        if self.height() < 440:
+            header_height = 48
+        elif compact:
+            header_height = 58
+        elif self.height() < 600:
+            header_height = 74
+        else:
+            header_height = 86
+        self.header.setFixedHeight(header_height)
 
-    def change_page(self, index):
+    def change_page(self, index: int) -> None:
         if not 0 <= index < self.pages.count():
             return
         self.pages.setCurrentIndex(index)
@@ -272,19 +337,19 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
-    def update_system_status(self, state):
+    def update_system_status(self, state: bool) -> None:
         connected = bool(state)
         status_text = 'SYSTEM CONNECTED' if connected else 'SYSTEM NOT CONNECTED'
         self.status_text.setText(status_text)
         color = '#2e7d4f' if connected else '#c0392b'
         self.status_text.setStyleSheet(f"""
             color: {color};
-            font-size: 18px;
+            font-size: 20px;
             font-weight: bold;
-            padding: 12px;
+            padding: 4px;
         """)
 
-    def create_menu_button(self, label):
+    def create_menu_button(self, label: str) -> AnimatedButton:
         button = AnimatedButton(label)
         button.setProperty('class', 'menu_button')
         button.setObjectName('menu_button')

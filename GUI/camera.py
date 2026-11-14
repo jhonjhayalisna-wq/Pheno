@@ -360,7 +360,13 @@ class CameraPage(QWidget):
         )
         preview_box.setScaledContents(False)
         preview_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        preview_layout.addWidget(preview_box)
+        preview_layout.addStretch()
+        preview_row = QHBoxLayout()
+        preview_row.addStretch()
+        preview_row.addWidget(preview_box)
+        preview_row.addStretch()
+        preview_layout.addLayout(preview_row)
+        preview_layout.addStretch()
         self.preview_box = preview_box
         self.full_view_dialog = None
         self.full_view_box = None
