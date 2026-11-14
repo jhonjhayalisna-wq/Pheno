@@ -54,6 +54,9 @@ class CameraPage(QWidget):
         self.local_camera_controls = CAMERA_CONTROL_DEFAULTS.copy()
         self.local_camera_control_overrides = {}
         self.local_camera_stream_overrides = {}
+        self.camera_stream_values = dict(
+            getattr(camera_controller, "camera_stream_overrides", {}) or {}
+        )
         self.camera_timer = QTimer(self)
         self.camera_timer.timeout.connect(self.update_camera_feed)
         self.model = None
@@ -69,6 +72,12 @@ class CameraPage(QWidget):
         self.current_bean_id = 0
         self.camera_control_sliders = {}
         self.camera_control_values = CAMERA_CONTROL_DEFAULTS.copy()
+        controller_control_values = getattr(
+            camera_controller,
+            "camera_control_values",
+            {},
+        )
+        self.camera_control_values.update(controller_control_values or {})
         self.has_camera_controls_status_signal = False
         self._restoring_camera_controls = False
         self.setup_ui()
@@ -138,7 +147,10 @@ class CameraPage(QWidget):
         self.focus_auto_button, self.focus_manual_button = self._add_mode_buttons(
             lens_layout,
             "Focus",
-            auto_selected=True,
+            auto_selected=(
+                self.camera_control_values[cv2.CAP_PROP_AUTOFOCUS]
+                == CAMERA_CONTROL_DEFAULTS[cv2.CAP_PROP_AUTOFOCUS]
+            ),
             changed=self._set_focus_mode,
         )
         self._add_camera_slider(
@@ -148,7 +160,7 @@ class CameraPage(QWidget):
             cv2.CAP_PROP_FOCUS,
             0,
             255,
-            CAMERA_CONTROL_DEFAULTS[cv2.CAP_PROP_FOCUS],
+            round(self.camera_control_values[cv2.CAP_PROP_FOCUS]),
         )
         focus_range = QHBoxLayout()
         far_label = QLabel("Far")
@@ -172,7 +184,19 @@ class CameraPage(QWidget):
         self.resolution_selector = QComboBox()
         self.resolution_selector.setObjectName("camera_resolution_selector")
         self.resolution_selector.addItems(list(CAMERA_RESOLUTIONS))
-        self.resolution_selector.setCurrentText("480P")
+        requested_resolution = (
+            self.camera_stream_values.get(cv2.CAP_PROP_FRAME_WIDTH),
+            self.camera_stream_values.get(cv2.CAP_PROP_FRAME_HEIGHT),
+        )
+        resolution = next(
+            (
+                name
+                for name, dimensions in CAMERA_RESOLUTIONS.items()
+                if dimensions == requested_resolution
+            ),
+            "480P",
+        )
+        self.resolution_selector.setCurrentText(resolution)
         resolution_row.addStretch()
         resolution_row.addWidget(self.resolution_selector)
         lens_layout.addLayout(resolution_row)
@@ -184,7 +208,12 @@ class CameraPage(QWidget):
         self.fps_selector.addItems(
             [str(frame_rate) for frame_rate in CAMERA_FRAME_RATES]
         )
-        self.fps_selector.setCurrentText("30")
+        frame_rate = int(
+            self.camera_stream_values.get(cv2.CAP_PROP_FPS, 30)
+        )
+        if frame_rate not in CAMERA_FRAME_RATES:
+            frame_rate = 30
+        self.fps_selector.setCurrentText(str(frame_rate))
         fps_row.addStretch()
         fps_row.addWidget(self.fps_selector)
         lens_layout.addLayout(fps_row)
@@ -200,7 +229,12 @@ class CameraPage(QWidget):
             self._add_mode_buttons(
                 exposure_layout,
                 "Exposure",
-                auto_selected=True,
+                auto_selected=(
+                    self.camera_control_values[cv2.CAP_PROP_AUTO_EXPOSURE]
+                    == CAMERA_CONTROL_DEFAULTS[
+                        cv2.CAP_PROP_AUTO_EXPOSURE
+                    ]
+                ),
                 changed=self._set_exposure_mode,
             )
         )
@@ -211,7 +245,7 @@ class CameraPage(QWidget):
             cv2.CAP_PROP_EXPOSURE,
             -13,
             0,
-            CAMERA_CONTROL_DEFAULTS[cv2.CAP_PROP_EXPOSURE],
+            round(self.camera_control_values[cv2.CAP_PROP_EXPOSURE]),
             suffix="EV",
         )
         self._add_camera_slider(
@@ -221,7 +255,7 @@ class CameraPage(QWidget):
             cv2.CAP_PROP_GAIN,
             0,
             255,
-            CAMERA_CONTROL_DEFAULTS[cv2.CAP_PROP_GAIN],
+            round(self.camera_control_values[cv2.CAP_PROP_GAIN]),
         )
 
         flicker_row = QHBoxLayout()
@@ -245,7 +279,10 @@ class CameraPage(QWidget):
             self._add_mode_buttons(
                 image_layout,
                 "White balance",
-                auto_selected=True,
+                auto_selected=(
+                    self.camera_control_values[cv2.CAP_PROP_AUTO_WB]
+                    == CAMERA_CONTROL_DEFAULTS[cv2.CAP_PROP_AUTO_WB]
+                ),
                 changed=self._set_white_balance_mode,
             )
         )
@@ -256,7 +293,7 @@ class CameraPage(QWidget):
             cv2.CAP_PROP_WB_TEMPERATURE,
             2000,
             6500,
-            CAMERA_CONTROL_DEFAULTS[cv2.CAP_PROP_WB_TEMPERATURE],
+            round(self.camera_control_values[cv2.CAP_PROP_WB_TEMPERATURE]),
             suffix="K",
         )
         self.white_balance_slider.setEnabled(True)
@@ -279,7 +316,7 @@ class CameraPage(QWidget):
                 property_id,
                 0,
                 255,
-                CAMERA_CONTROL_DEFAULTS[property_id],
+                round(self.camera_control_values[property_id]),
             )
 
         self.camera_controls_status = QLabel(

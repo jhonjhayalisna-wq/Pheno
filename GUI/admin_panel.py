@@ -1,7 +1,9 @@
 from datetime import datetime
+from functools import partial
+from typing import Any
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QCloseEvent, QPalette
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -29,6 +31,7 @@ from .auth import (
     AuthStorageError,
 )
 from .camera import CameraPage
+from .dashboard import Dashboard
 from .history import HistoryPage
 from .nir_analysis import NIRAnalysisPage
 from .results import ResultsPage
@@ -38,7 +41,7 @@ from .touch_scrolling import enable_touch_scrolling
 
 
 class AdminPasswordResetDialog(QDialog):
-    def __init__(self, username, parent=None):
+    def __init__(self, username: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("admin_password_reset_dialog")
         self.setWindowTitle(f"Reset password - {username}")
@@ -86,10 +89,10 @@ class AdminPasswordResetDialog(QDialog):
         layout.addWidget(self.buttons)
 
     @property
-    def password(self):
+    def password(self) -> str:
         return self.password_input.text()
 
-    def _toggle_password_visibility(self, checked):
+    def _toggle_password_visibility(self, checked: bool) -> None:
         mode = (
             QLineEdit.EchoMode.Normal
             if checked
@@ -97,7 +100,7 @@ class AdminPasswordResetDialog(QDialog):
         )
         self.password_input.setEchoMode(mode)
 
-    def _accept_if_valid(self):
+    def _accept_if_valid(self) -> None:
         if not self.password:
             self.error_label.setText("Please provide a password.")
             return
@@ -105,7 +108,7 @@ class AdminPasswordResetDialog(QDialog):
 
 
 class SystemOverviewPage(QWidget):
-    def __init__(self, dashboard):
+    def __init__(self, dashboard: Dashboard) -> None:
         super().__init__()
         self.setObjectName("admin_system_overview_page")
         self.dashboard = dashboard
@@ -118,7 +121,7 @@ class SystemOverviewPage(QWidget):
         title = QLabel("System Overview")
         title.setObjectName("page_title")
         description = QLabel(
-            "Live status for the Arduino Mega controller and Arduino Nano NIR scanner."
+            "Live status for the Arduino Mega controller and connected system components."
         )
         description.setObjectName("settings_description")
         description.setWordWrap(True)
@@ -137,11 +140,10 @@ class SystemOverviewPage(QWidget):
         status_title.setObjectName("section_title")
         status_layout.addWidget(status_title)
 
-        self.status_values = {}
+        self.status_values: dict[str, QLabel] = {}
         for name in (
             "Camera",
             "Arduino Mega",
-            "Arduino Nano",
             "NIR Sensor",
             "Load Cell",
             "NIR AI Model",
@@ -166,11 +168,10 @@ class SystemOverviewPage(QWidget):
         self.refresh_timer.start(500)
         self.refresh_status()
 
-    def refresh_status(self, *_args):
+    def refresh_status(self) -> None:
         states = {
             "Camera": self.dashboard.camera_connected,
             "Arduino Mega": self.dashboard.arduino_connected,
-            "Arduino Nano": self.dashboard.nir_connected,
             "NIR Sensor": self.dashboard.nir_connected,
             "NIR AI Model": getattr(
                 self.dashboard,
@@ -210,7 +211,7 @@ class SystemOverviewPage(QWidget):
 
 
 class ProcessMonitorPage(QWidget):
-    def __init__(self, dashboard):
+    def __init__(self, dashboard: Dashboard) -> None:
         super().__init__()
         self.setObjectName("admin_process_monitor_page")
         layout = QVBoxLayout(self)
@@ -232,7 +233,7 @@ class ProcessMonitorPage(QWidget):
         dashboard.system_log_received.connect(self.append_log)
         dashboard.nir_message_received.connect(self.append_log)
 
-    def append_log(self, message):
+    def append_log(self, message: str) -> None:
         timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
         self.log_output.appendPlainText(f"{timestamp}  {message}")
         self.log_output.ensureCursorVisible()
@@ -243,7 +244,7 @@ class AdminAccountCreationPage(QWidget):
         self,
         session: AdminSession,
         credentials: AdminCredentials,
-    ):
+    ) -> None:
         super().__init__()
         self.session = session
         self.credentials = credentials
@@ -302,7 +303,7 @@ class AdminAccountCreationPage(QWidget):
         layout.addStretch()
         self.refresh_accounts()
 
-    def _toggle_password_visibility(self, checked):
+    def _toggle_password_visibility(self, checked: bool) -> None:
         mode = (
             QLineEdit.EchoMode.Normal
             if checked
@@ -310,7 +311,7 @@ class AdminAccountCreationPage(QWidget):
         )
         self.password_input.setEchoMode(mode)
 
-    def create_admin_account(self):
+    def create_admin_account(self) -> None:
         if not self._authorize_super_admin():
             return
 
@@ -338,9 +339,11 @@ class AdminAccountCreationPage(QWidget):
         self.status_label.setText(f"Admin account '{username}' created.")
         self.refresh_accounts()
 
-    def refresh_accounts(self):
+    def refresh_accounts(self) -> None:
         while self.account_cards_layout.count():
             item = self.account_cards_layout.takeAt(0)
+            if item is None:
+                continue
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
@@ -362,7 +365,7 @@ class AdminAccountCreationPage(QWidget):
         for account in accounts:
             self._add_account_card(account)
 
-    def _add_account_card(self, account):
+    def _add_account_card(self, account: dict[str, Any]) -> None:
         username = account["username"]
         is_super_admin = account.get("role") == SUPER_ADMIN_ROLE
         is_active = account.get("is_active", True)
@@ -400,8 +403,7 @@ class AdminAccountCreationPage(QWidget):
             toggle_button.setToolTip(f"{toggle_action} {username}")
             toggle_button.setAccessibleName(f"{toggle_action} admin {username}")
             toggle_button.clicked.connect(
-                lambda _checked=False, account_username=username:
-                self.toggle_account_status(account_username)
+                partial(self.toggle_account_status, username)
             )
             row.addWidget(toggle_button)
 
@@ -417,8 +419,7 @@ class AdminAccountCreationPage(QWidget):
             delete_button.setToolTip(f"Delete {username}")
             delete_button.setAccessibleName(f"Delete admin {username}")
             delete_button.clicked.connect(
-                lambda _checked=False, account_username=username:
-                self.delete_admin_account(account_username)
+                partial(self.delete_admin_account, username)
             )
             row.addWidget(delete_button)
 
@@ -434,14 +435,13 @@ class AdminAccountCreationPage(QWidget):
                 f"Reset password for admin {username}"
             )
             reset_button.clicked.connect(
-                lambda _checked=False, account_username=username:
-                self.reset_admin_password(account_username)
+                partial(self.reset_admin_password, username)
             )
             row.addWidget(reset_button)
 
         self.account_cards_layout.addWidget(card)
 
-    def toggle_account_status(self, username):
+    def toggle_account_status(self, username: str) -> None:
         if not self._authorize_super_admin():
             return
         try:
@@ -469,7 +469,7 @@ class AdminAccountCreationPage(QWidget):
         )
         self.refresh_accounts()
 
-    def delete_admin_account(self, username):
+    def delete_admin_account(self, username: str) -> None:
         if not self._authorize_super_admin():
             return
         confirmation = QMessageBox(self)
@@ -506,7 +506,7 @@ class AdminAccountCreationPage(QWidget):
         self.status_label.setText(f"Admin account '{username}' deleted.")
         self.refresh_accounts()
 
-    def reset_admin_password(self, username):
+    def reset_admin_password(self, username: str) -> None:
         if not self._authorize_super_admin():
             return
         dialog = AdminPasswordResetDialog(username, self)
@@ -523,7 +523,7 @@ class AdminAccountCreationPage(QWidget):
         )
         self.refresh_accounts()
 
-    def _authorize_super_admin(self):
+    def _authorize_super_admin(self) -> bool:
         try:
             self.session.require_admin()
         except PermissionError:
@@ -551,10 +551,10 @@ class AdminControlPanel(QMainWindow):
 
     def __init__(
         self,
-        dashboard,
+        dashboard: Dashboard,
         session: AdminSession,
         credentials: AdminCredentials | None = None,
-    ):
+    ) -> None:
         session.require_admin()
         super().__init__()
         self.dashboard = dashboard
@@ -566,7 +566,7 @@ class AdminControlPanel(QMainWindow):
         self.setMinimumSize(640, 360)
         self._setup_ui()
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         central = QWidget()
         central.setObjectName("admin_panel_central")
         self.setCentralWidget(central)
@@ -595,7 +595,7 @@ class AdminControlPanel(QMainWindow):
             permission_check=lambda: self.session.is_admin,
         )
         self.history_page = HistoryPage()
-        pages = [
+        pages: list[QWidget] = [
             SystemOverviewPage(self.dashboard),
             self.camera_page,
             self.nir_page,
@@ -630,8 +630,8 @@ class AdminControlPanel(QMainWindow):
                 f"NIR AI model compatibility warning: {nir_model_warning}"
             )
 
-        self.navigation_buttons = []
-        self.admin_scroll_areas = []
+        self.navigation_buttons: list[QPushButton] = []
+        self.admin_scroll_areas: list[QScrollArea] = []
         for index, name in enumerate(self.SECTION_NAMES):
             label = {
                 "Process Monitor / Debug Logs": "Debug Logs",
@@ -640,9 +640,7 @@ class AdminControlPanel(QMainWindow):
             button = QPushButton(label)
             button.setObjectName("admin_navigation_button")
             button.setCheckable(True)
-            button.clicked.connect(
-                lambda _checked=False, page_index=index: self.change_page(page_index)
-            )
+            button.clicked.connect(partial(self.change_page, index))
             sidebar_layout.addWidget(button)
             self.navigation_buttons.append(button)
             if name == "Create Admin Account":
@@ -686,7 +684,7 @@ class AdminControlPanel(QMainWindow):
         layout.addWidget(content)
         self.change_page(0)
 
-    def activate_admin_view(self):
+    def activate_admin_view(self) -> None:
         self.session.require_admin()
         self._update_admin_management_access()
         self.dashboard.set_camera_usage_button(
@@ -696,19 +694,20 @@ class AdminControlPanel(QMainWindow):
             getattr(self.dashboard, "nir_scanning", False)
         )
 
-    def _update_admin_management_access(self):
+    def _update_admin_management_access(self) -> None:
         can_manage_accounts = self.session.can_create_admin_accounts()
         accounts_index = self.SECTION_NAMES.index("Create Admin Account")
         self.navigation_buttons[accounts_index].setVisible(can_manage_accounts)
-        account_page = self.stack.widget(accounts_index).widget()
-        account_page.refresh_accounts()
+        account_page = self.admin_scroll_areas[accounts_index].widget()
+        if isinstance(account_page, AdminAccountCreationPage):
+            account_page.refresh_accounts()
         if not can_manage_accounts and self.stack.currentIndex() == accounts_index:
             self.change_page(0)
 
-    def deactivate_admin_view(self):
+    def deactivate_admin_view(self) -> None:
         self.camera_page.camera_timer.stop()
 
-    def change_page(self, index):
+    def change_page(self, index: int) -> None:
         if not self._authorize():
             return
         if (
@@ -724,7 +723,7 @@ class AdminControlPanel(QMainWindow):
             button.setChecked(False)
         self.navigation_buttons[index].setChecked(True)
 
-    def _authorize(self):
+    def _authorize(self) -> bool:
         try:
             self.session.require_admin()
         except PermissionError:
@@ -735,6 +734,6 @@ class AdminControlPanel(QMainWindow):
             return False
         return True
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QCloseEvent) -> None:
         self.logout_requested.emit()
         event.ignore()

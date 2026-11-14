@@ -757,10 +757,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             overview.status_values["NIR Sensor"].text(),
             "NOT CONNECTED",
         )
-        self.assertEqual(
-            overview.status_values["Arduino Nano"].text(),
-            "NOT CONNECTED",
-        )
+        self.assertNotIn("Arduino Nano", overview.status_values)
         dashboard.arduino_connected = True
         overview.refresh_status()
         self.assertEqual(
@@ -1746,13 +1743,13 @@ class HardwareCompatibilityTests(unittest.TestCase):
             [
                 "Camera",
                 "Arduino Mega",
-                "Arduino Nano",
                 "NIR Sensor",
                 "Load Cell",
                 "NIR AI Model",
                 "Camera AI Model",
             ],
         )
+        self.assertNotIn("Arduino Nano", overview.status_values)
         self.assertEqual(
             overview.status_values["Load Cell"].text(),
             "NOT CONNECTED",

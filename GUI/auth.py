@@ -5,6 +5,7 @@ import os
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 HASH_NAME = 'sha256'
 HASH_ITERATIONS = 600_000
@@ -106,14 +107,20 @@ class AdminCredentials:
     def verify_login(self, username, secret):
         return self.authenticate(username, secret) is not None
 
-    def list_accounts(self):
+    def list_accounts(self) -> list[dict[str, Any]]:
         store = self._read_store()
         accounts = []
         for account in store.get('accounts', []):
             accounts.append(self._public_account(account))
         return sorted(accounts, key=lambda item: item['username'].lower())
 
-    def create_account(self, name, username, secret, role=ADMIN_ROLE):
+    def create_account(
+        self,
+        name: str,
+        username: str,
+        secret: str,
+        role: str = ADMIN_ROLE,
+    ) -> dict[str, Any]:
         if not name or not str(name).strip():
             raise ValueError('Please provide the administrator name.')
         username = str(username).strip()
@@ -161,7 +168,11 @@ class AdminCredentials:
         self._persist_store(store)
         return self._public_account(account)
 
-    def reset_password(self, username, new_secret):
+    def reset_password(
+        self,
+        username: str,
+        new_secret: str,
+    ) -> dict[str, Any]:
         store = self._read_store()
         account = self._find_account(store, username)
         if account is None:
@@ -180,7 +191,11 @@ class AdminCredentials:
         self._persist_store(store)
         return self._public_account(account)
 
-    def disable_account(self, username, disabled=True):
+    def disable_account(
+        self,
+        username: str,
+        disabled: bool = True,
+    ) -> dict[str, Any]:
         store = self._read_store()
         account = self._find_account(store, username)
         if account is None:
@@ -191,7 +206,7 @@ class AdminCredentials:
         self._persist_store(store)
         return self._public_account(account)
 
-    def delete_account(self, username):
+    def delete_account(self, username: str) -> bool:
         store = self._read_store()
         account = self._find_account(store, username)
         if account is None:
@@ -313,7 +328,7 @@ class AdminCredentials:
         except OSError as exc:
             raise AuthStorageError(f'Could not save administrator credentials: {exc}') from exc
 
-    def _public_account(self, account):
+    def _public_account(self, account: dict[str, Any]) -> dict[str, Any]:
         return {
             'username': account.get('username'),
             'name': account.get('name'),

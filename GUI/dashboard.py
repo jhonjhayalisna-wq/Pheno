@@ -48,6 +48,7 @@ from PySide6.QtWidgets import (
     QBoxLayout,
     QComboBox,
     QHeaderView,
+    QPushButton,
 )
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, QTimer, Signal
 from PySide6.QtGui import QImage, QPixmap
@@ -151,7 +152,7 @@ class Dashboard(QWidget):
         }
         self.camera_enabled = False
         self.camera_usage_enabled = True
-        self.camera_usage_button = None
+        self.camera_usage_button: QPushButton | None = None
         self.last_frame = None
         self.last_ai_frame = None
         self.last_ai_result = None
@@ -1636,7 +1637,7 @@ class Dashboard(QWidget):
         self.camera_usage_button.style().unpolish(self.camera_usage_button)
         self.camera_usage_button.style().polish(self.camera_usage_button)
 
-    def set_camera_usage_button(self, button):
+    def set_camera_usage_button(self, button: QPushButton | None) -> None:
         self.camera_usage_button = button
         self.update_camera_usage_button()
 

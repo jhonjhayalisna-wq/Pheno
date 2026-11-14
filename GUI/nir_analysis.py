@@ -165,7 +165,11 @@ class NIRAnalysisPage(QWidget):
 
         layout.addStretch()
 
-    def set_classifier_result(self, label, confidence=None):
+    def set_classifier_result(
+        self,
+        label: str,
+        confidence: float | None = None,
+    ) -> None:
         if confidence is None or label == "UNAVAILABLE":
             self.quality_value.setText(
                 "Unavailable" if label == "UNAVAILABLE" else ""
@@ -175,10 +179,10 @@ class NIRAnalysisPage(QWidget):
         self.quality_value.setText(label)
         self.nir_confidence_value.setText(f"{confidence:.1f}%")
 
-    def set_scanning_state(self, enabled):
+    def set_scanning_state(self, enabled: bool) -> None:
         self.scanning = bool(enabled)
 
-    def append_serial_line(self, line):
+    def append_serial_line(self, line: str) -> None:
         if not line:
             return
         if line.startswith("NIR_SCAN_STATUS:"):

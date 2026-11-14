@@ -120,6 +120,63 @@ class CameraControlTests(unittest.TestCase):
         )
         self.assertEqual(capture.values[cv2.CAP_PROP_FPS], 60)
 
+    def test_admin_camera_controls_share_dashboard_settings_and_feed(self):
+        class FakeCapture:
+            def __init__(self):
+                self.values = {}
+
+            def set(self, property_id, value):
+                self.values[property_id] = value
+                return True
+
+            def isOpened(self):
+                return True
+
+            def read(self):
+                return True, np.full((480, 640, 3), 24, dtype=np.uint8)
+
+            def release(self):
+                pass
+
+        with patch("GUI.dashboard.load_yolo_model", return_value=(None, None)):
+            with patch.object(Dashboard, "update_arduino_status"):
+                dashboard = Dashboard()
+        self.addCleanup(dashboard.close)
+        dashboard.arduino_timer.stop()
+        dashboard.camera_control_values[cv2.CAP_PROP_AUTOFOCUS] = 0
+        dashboard.camera_control_values[cv2.CAP_PROP_FOCUS] = 80
+        dashboard.camera_control_values[cv2.CAP_PROP_AUTO_EXPOSURE] = 0.25
+        dashboard.camera_control_values[cv2.CAP_PROP_EXPOSURE] = -4
+        dashboard.camera_stream_overrides.update(
+            {
+                cv2.CAP_PROP_FRAME_WIDTH: 1280,
+                cv2.CAP_PROP_FRAME_HEIGHT: 720,
+                cv2.CAP_PROP_FPS: 60,
+            }
+        )
+        capture = FakeCapture()
+        dashboard.camera_capture = capture
+        dashboard.camera_enabled = True
+
+        page = CameraPage(camera_controller=dashboard)
+        self.addCleanup(page.close)
+        self.assertIsNone(page.camera_capture)
+        self.assertFalse(page.focus_auto_button.isChecked())
+        self.assertEqual(page.focus_slider.value(), 80)
+        self.assertFalse(page.exposure_auto_button.isChecked())
+        self.assertEqual(page.exposure_slider.value(), -4)
+        self.assertEqual(page.resolution_selector.currentText(), "720P")
+        self.assertEqual(page.fps_selector.currentText(), "60")
+
+        page.focus_slider.setValue(90)
+        page.exposure_slider.setValue(-3)
+        self.assertEqual(capture.values[cv2.CAP_PROP_FOCUS], 90)
+        self.assertEqual(capture.values[cv2.CAP_PROP_EXPOSURE], -3)
+
+        dashboard.update_camera_feed()
+        page.update_camera_feed()
+        np.testing.assert_array_equal(page.last_frame, dashboard.last_frame)
+
     def test_dashboard_rotates_camera_preview_to_portrait_orientation(self):
         with patch("GUI.dashboard.load_yolo_model", return_value=(None, None)):
             with patch.object(Dashboard, "update_arduino_status"):
