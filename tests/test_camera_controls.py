@@ -320,29 +320,38 @@ class CameraControlTests(unittest.TestCase):
 
         self.assertTrue(dashboard.camera_enabled)
         self.assertEqual(
-            capture.set_calls,
+            capture.set_calls[:2],
             [
                 (cv2.CAP_PROP_FRAME_WIDTH, 640),
-                (cv2.CAP_PROP_FRAME_HEIGHT, 360),
+                (cv2.CAP_PROP_FRAME_HEIGHT, 480),
             ],
         )
+        startup_controls = dict(capture.set_calls[2:])
+        self.assertEqual(startup_controls[cv2.CAP_PROP_AUTOFOCUS], 1)
+        self.assertEqual(startup_controls[cv2.CAP_PROP_AUTO_EXPOSURE], 0.75)
+        self.assertEqual(startup_controls[cv2.CAP_PROP_AUTO_WB], 1)
+        self.assertNotIn(cv2.CAP_PROP_FOCUS, startup_controls)
+        self.assertNotIn(cv2.CAP_PROP_EXPOSURE, startup_controls)
+        self.assertNotIn(cv2.CAP_PROP_GAIN, startup_controls)
 
         dashboard.stop_camera()
+        capture.set_calls.clear()
         dashboard.set_camera_control(cv2.CAP_PROP_BRIGHTNESS, 180)
         dashboard.set_camera_stream_setting(cv2.CAP_PROP_FPS, 60)
         with patch.object(dashboard, "open_camera", return_value=capture):
             dashboard.start_camera()
 
         self.assertEqual(
-            capture.set_calls,
+            capture.set_calls[:3],
             [
                 (cv2.CAP_PROP_FRAME_WIDTH, 640),
-                (cv2.CAP_PROP_FRAME_HEIGHT, 360),
-                (cv2.CAP_PROP_FRAME_WIDTH, 640),
-                (cv2.CAP_PROP_FRAME_HEIGHT, 360),
+                (cv2.CAP_PROP_FRAME_HEIGHT, 480),
                 (cv2.CAP_PROP_FPS, 60),
-                (cv2.CAP_PROP_BRIGHTNESS, 180),
             ],
+        )
+        self.assertEqual(
+            dict(capture.set_calls[3:])[cv2.CAP_PROP_BRIGHTNESS],
+            180,
         )
         self.assertEqual(dashboard.camera_timer.interval(), 17)
 
@@ -394,9 +403,29 @@ class CameraControlTests(unittest.TestCase):
             [
                 (cv2.CAP_PROP_FRAME_WIDTH, 3840),
                 (cv2.CAP_PROP_FRAME_HEIGHT, 2160),
+                (cv2.CAP_PROP_AUTOFOCUS, 1),
+                (cv2.CAP_PROP_AUTO_EXPOSURE, 0.75),
+                (cv2.CAP_PROP_AUTO_WB, 1),
+                (cv2.CAP_PROP_BRIGHTNESS, 128),
+                (cv2.CAP_PROP_CONTRAST, 128),
+                (cv2.CAP_PROP_HUE, 128),
+                (cv2.CAP_PROP_SATURATION, 128),
+                (cv2.CAP_PROP_SHARPNESS, 128),
             ],
         )
-        self.assertEqual(default_mode.set_calls, [])
+        self.assertEqual(
+            default_mode.set_calls,
+            [
+                (cv2.CAP_PROP_AUTOFOCUS, 1),
+                (cv2.CAP_PROP_AUTO_EXPOSURE, 0.75),
+                (cv2.CAP_PROP_AUTO_WB, 1),
+                (cv2.CAP_PROP_BRIGHTNESS, 128),
+                (cv2.CAP_PROP_CONTRAST, 128),
+                (cv2.CAP_PROP_HUE, 128),
+                (cv2.CAP_PROP_SATURATION, 128),
+                (cv2.CAP_PROP_SHARPNESS, 128),
+            ],
+        )
 
     def test_admin_capture_applies_selected_resolution_and_fps(self):
         class FakeController(QObject):

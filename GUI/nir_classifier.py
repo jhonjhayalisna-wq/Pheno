@@ -1,6 +1,8 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
+from typing import Any
 import warnings
 
 from NIR.as7265x import WAVELENGTHS
@@ -17,8 +19,8 @@ class NIRPrediction:
 
 
 class NIRClassifier:
-    def __init__(self, model):
-        self.model = model
+    def __init__(self, model: Any) -> None:
+        self.model: Any = model
         model_features = getattr(model, "feature_names_in_", None)
         if model_features is not None:
             if tuple(str(feature) for feature in model_features) != FEATURE_NAMES:
@@ -27,9 +29,9 @@ class NIRClassifier:
                 )
         if not hasattr(model, "classes_"):
             raise ValueError("The NIR model does not expose its trained classes.")
-        self.load_warnings = ()
+        self.load_warnings: tuple[str, ...] = ()
 
-    def predict(self, spectra):
+    def predict(self, spectra: Sequence[Sequence[float]]) -> NIRPrediction:
         if len(spectra) != SCANS_PER_BEAN:
             raise ValueError(
                 f"Expected {SCANS_PER_BEAN} NIR scans, received {len(spectra)}."
@@ -72,7 +74,7 @@ class NIRClassifier:
         return NIRPrediction(label=label, confidence=confidence)
 
 
-def default_nir_model_path():
+def default_nir_model_path() -> Path:
     return (
         Path(__file__).resolve().parents[1]
         / "NIR"
@@ -81,7 +83,9 @@ def default_nir_model_path():
     )
 
 
-def load_nir_classifier(model_path=None):
+def load_nir_classifier(
+    model_path: str | Path | None = None,
+) -> tuple[NIRClassifier, Path]:
     model_file = Path(model_path or default_nir_model_path()).expanduser()
     if not model_file.is_file():
         raise FileNotFoundError(f"NIR model file not found: {model_file}")

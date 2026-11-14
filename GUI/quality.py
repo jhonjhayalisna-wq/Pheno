@@ -12,7 +12,7 @@ QUALITY_CATEGORIES = (
 )
 
 
-def normalize_quality_category(raw_name):
+def normalize_quality_category(raw_name: object) -> str | None:
     normalized = re.sub(
         r"\s*\([^)]*\)\s*$",
         "",

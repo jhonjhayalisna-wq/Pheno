@@ -1,12 +1,15 @@
 # dashboard.py
 
+from collections.abc import Mapping, Sequence
 import re
 import time
 from datetime import date
 from math import isfinite
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from numpy.typing import NDArray
 
 import cv2
 
@@ -25,8 +28,13 @@ from .camera_controls import (
     CAMERA_STREAM_PROPERTY_NAMES,
     apply_camera_controls,
     apply_camera_stream_settings,
+    camera_controls_for_start,
 )
 from .quality import normalize_quality_category
+
+if TYPE_CHECKING:
+    from serial import Serial
+    from serial.tools.list_ports_common import ListPortInfo
 
 try:
     import serial
@@ -41,20 +49,18 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QFrame,
-    QTableWidget,
-    QTableWidgetItem,
     QSizePolicy,
     QGridLayout,
     QBoxLayout,
     QComboBox,
-    QHeaderView,
     QPushButton,
 )
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, QTimer, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QCloseEvent, QImage, QPixmap, QResizeEvent
 from PySide6.QtMultimedia import QMediaDevices
 from .animated_button import AnimatedButton
 from .nir_classifier import (
+    NIRClassifier,
     SCANS_PER_BEAN,
     default_nir_model_path,
     load_nir_classifier,
@@ -67,7 +73,13 @@ class _InferenceSignals(QObject):
 
 
 class _InferenceTask(QRunnable):
-    def __init__(self, token, model, frame, frame_rate_buffer):
+    def __init__(
+        self,
+        token: int,
+        model: Any,
+        frame: cv2.Mat | NDArray[Any],
+        frame_rate_buffer: list[float],
+    ) -> None:
         super().__init__()
         self.token = token
         self.model = model
@@ -75,7 +87,7 @@ class _InferenceTask(QRunnable):
         self.frame_rate_buffer = frame_rate_buffer
         self.signals = _InferenceSignals()
 
-    def run(self):
+    def run(self) -> None:
         try:
             started_at = perf_counter()
             frame = prepare_yolo_frame(self.frame)
@@ -136,42 +148,42 @@ class Dashboard(QWidget):
     ARDUINO_PROTOCOL_TIMEOUT_SECONDS = 5.0
     IR_SAMPLE_START_RETRY_SECONDS = 1.0
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         self.setObjectName("dashboard")
 
-        self.camera_source = self.EMEET_CAMERA_INDEX
+        self.camera_source: int | str = self.EMEET_CAMERA_INDEX
         self.arduino_baud_rate = 115200
-        self.camera_capture = None
+        self.camera_capture: Any | None = None
         self.camera_control_values = CAMERA_CONTROL_DEFAULTS.copy()
-        self.camera_control_overrides = {}
-        self.camera_stream_overrides = {
+        self.camera_control_overrides: dict[int, float] = {}
+        self.camera_stream_overrides: dict[int, float] = {
             cv2.CAP_PROP_FRAME_WIDTH: CAMERA_RESOLUTIONS["480P"][0],
             cv2.CAP_PROP_FRAME_HEIGHT: CAMERA_RESOLUTIONS["480P"][1],
         }
         self.camera_enabled = False
         self.camera_usage_enabled = True
         self.camera_usage_button: QPushButton | None = None
-        self.last_frame = None
-        self.last_ai_frame = None
-        self.last_ai_result = None
-        self.ai_model = None
+        self.last_frame: cv2.Mat | NDArray[Any] | None = None
+        self.last_ai_frame: cv2.Mat | NDArray[Any] | None = None
+        self.last_ai_result: Any | None = None
+        self.ai_model: Any | None = None
         self.ai_model_error = ""
-        self.nir_classifier = None
+        self.nir_classifier: NIRClassifier | None = None
         self.nir_model_path = str(default_nir_model_path())
         self.nir_model_error = ""
         self.nir_model_warning = ""
-        self.nir_sample_spectra = []
-        self.nir_pending_spectrum = None
+        self.nir_sample_spectra: list[list[float]] = []
+        self.nir_pending_spectrum: list[float] | None = None
         self.collecting_nir_scans = False
-        self.current_bean_camera_quality = None
+        self.current_bean_camera_quality: str | None = None
         self.ai_inference_pool = QThreadPool(self)
         self.ai_inference_pool.setMaxThreadCount(1)
         self.ai_inference_busy = False
         self.ai_inference_token = 0
-        self.ai_inference_task = None
-        self.ai_frame_rate_buffer = []
+        self.ai_inference_task: _InferenceTask | None = None
+        self.ai_frame_rate_buffer: list[float] = []
         self.camera_timer = QTimer(self)
         self.camera_timer.timeout.connect(self.update_camera_feed)
         self.arduino_timer = QTimer(self)
@@ -180,9 +192,9 @@ class Dashboard(QWidget):
         self.media_devices.videoInputsChanged.connect(
             self.update_camera_status_indicator
         )
-        self.arduino_serial = None
-        self.arduino_port = None
-        self.selected_arduino_port = None
+        self.arduino_serial: "Serial | None" = None
+        self.arduino_port: str | None = None
+        self.selected_arduino_port: str | None = None
         self.arduino_primary_baud_rate = 115200
         self.camera_connected = False
         self.arduino_connected = False
@@ -193,17 +205,17 @@ class Dashboard(QWidget):
         self.arduino_initialization_complete = False
         self.arduino_connection_started_at = 0.0
         self.arduino_protocol_timeout_reported = False
-        self.arduino_status_message = ""
+        self.arduino_status_message: str = ""
         self.nir_connected = False
-        self.serial_buffer = ""
-        self.current_weight_kg = None
-        self.good_weight_grams = None
+        self.serial_buffer: str = ""
+        self.current_weight_kg: float | None = None
+        self.good_weight_grams: float | None = None
         self.total_bean_count = 0
         self.good_bean_count = 0
         self.not_good_bean_count = 0
         self.bean_rotation_active = False
         self.awaiting_bean_classification = False
-        self.best_rotation_quality = None
+        self.best_rotation_quality: str | None = None
         self.best_rotation_confidence = -1.0
         self.last_quality_confidence = 0.0
         self.ir_sample_requested = False
@@ -214,17 +226,17 @@ class Dashboard(QWidget):
         self.ir_final_count_expected = False
         self._set_nir_connected(False)
         self.nir_scanning = False
-        self.servo_minimum_angles = {1: 20, 2: 20}
-        self.servo_maximum_angles = {1: 160, 2: 160}
-        self.servo_sweep_speeds = {1: 45, 2: 45}
-        self.servo_sweeping = {1: False, 2: False}
+        self.servo_minimum_angles: dict[int, int] = {1: 20, 2: 20}
+        self.servo_maximum_angles: dict[int, int] = {1: 160, 2: 160}
+        self.servo_sweep_speeds: dict[int, int] = {1: 45, 2: 45}
+        self.servo_sweeping: dict[int, bool] = {1: False, 2: False}
         self.bean_classification_timer = QTimer(self)
         self.bean_classification_timer.setSingleShot(True)
         self.bean_classification_timer.timeout.connect(
             self._reject_unclassified_bean
         )
 
-        self.camera_modes = {
+        self.camera_modes: dict[str, dict[str, Any]] = {
             "Camera": {
                 "candidates": [self.EMEET_CAMERA_INDEX],
                 "empty_message": "No Camera Detected",
@@ -239,7 +251,7 @@ class Dashboard(QWidget):
         self.update_arduino_status()
         self.arduino_timer.start(100)
 
-    def resizeEvent(self, event):
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
 
         self.update_responsive_layout()
@@ -249,7 +261,7 @@ class Dashboard(QWidget):
         if frame is not None:
             self.render_camera_frame(frame, rotate=frame is self.last_frame)
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QCloseEvent) -> None:
         self.set_ir_sample_active(False)
         self.stop_camera()
         self.arduino_timer.stop()
@@ -257,7 +269,7 @@ class Dashboard(QWidget):
         self.close_arduino_serial()
         super().closeEvent(event)
 
-    def update_arduino_status(self):
+    def update_arduino_status(self) -> None:
         if list_ports is None or serial is None:
             self._set_arduino_status(
                 "Serial support is unavailable. Install the app requirements."
@@ -306,7 +318,7 @@ class Dashboard(QWidget):
         self._retry_ir_sample_start()
         self.update_nir_status()
 
-    def set_arduino_port(self, port):
+    def set_arduino_port(self, port: str | None) -> None:
         selected_port = str(port) if port else None
         if selected_port == self.selected_arduino_port:
             return
@@ -316,7 +328,7 @@ class Dashboard(QWidget):
             self.close_arduino_serial()
         self.update_arduino_status()
 
-    def _check_arduino_protocol_timeout(self):
+    def _check_arduino_protocol_timeout(self) -> None:
         if (
             self.arduino_serial is None
             or not self.arduino_serial.is_open
@@ -335,12 +347,12 @@ class Dashboard(QWidget):
         self.system_log_received.emit(message)
         self._set_arduino_status(message)
 
-    def _set_arduino_status(self, message):
+    def _set_arduino_status(self, message: str) -> None:
         if self.arduino_status_message != message:
             self.arduino_status_message = message
             self.arduino_status_changed.emit(message)
 
-    def read_arduino_messages(self, port):
+    def read_arduino_messages(self, port: "ListPortInfo") -> None:
         if serial is None:
             self._set_arduino_status(
                 "Serial support is unavailable. Install the app requirements."
@@ -369,7 +381,7 @@ class Dashboard(QWidget):
                     "Check the sketch baud rate and finish calibration if prompted."
                 )
                 QTimer.singleShot(1500, self.initialize_nir_scanner)
-            except (serial.SerialException, OSError) as exc:
+            except OSError as exc:
                 self.arduino_serial = None
                 self.system_log_received.emit(
                     f"Arduino serial connection failed on {port.device}: {exc}"
@@ -528,16 +540,16 @@ class Dashboard(QWidget):
                     self.nir_scanning = False
                 elif message.startswith("NIR_SCAN_ERROR:"):
                     self.nir_scanning = False
-        except (serial.SerialException, OSError) as exc:
+        except OSError as exc:
             self.system_log_received.emit(f"Arduino serial read failed: {exc}")
             self._set_arduino_status(f"Arduino serial read failed: {exc}")
             self.close_arduino_serial()
 
-    def set_nir_scanning(self, enabled):
+    def set_nir_scanning(self, enabled: bool) -> None:
         self.nir_scanning = enabled
         self.send_nir_scan_command()
 
-    def set_ir_sample_active(self, enabled):
+    def set_ir_sample_active(self, enabled: bool) -> None:
         self.ir_sample_requested = bool(enabled)
         if self.ir_sample_requested:
             self.ir_sample_acknowledged = False
@@ -576,18 +588,18 @@ class Dashboard(QWidget):
         if self.ir_sample_command_sent:
             self.ir_sample_last_command_at = time.monotonic()
 
-    def start_system(self):
+    def start_system(self) -> None:
         self.set_ir_sample_active(True)
         self.start_camera()
 
-    def stop_system(self):
+    def stop_system(self) -> None:
         self.set_ir_sample_active(False)
         self.bean_classification_timer.stop()
         self.bean_rotation_active = False
         self.awaiting_bean_classification = False
         self.stop_camera()
 
-    def initialize_nir_scanner(self):
+    def initialize_nir_scanner(self) -> None:
         if (
             self.arduino_serial is None
             or not self.arduino_serial.is_open
@@ -603,7 +615,7 @@ class Dashboard(QWidget):
             if self.servo_sweeping[motor]:
                 self.write_arduino_command(f"W{motor},1\n")
 
-    def _send_ir_sample_start(self):
+    def _send_ir_sample_start(self) -> bool:
         if (
             not self.ir_sample_requested
             or self.arduino_serial is None
@@ -616,7 +628,7 @@ class Dashboard(QWidget):
             self.ir_sample_last_command_at = time.monotonic()
         return sent
 
-    def _retry_ir_sample_start(self):
+    def _retry_ir_sample_start(self) -> None:
         if (
             not self.ir_sample_requested
             or self.ir_sample_acknowledged
@@ -628,7 +640,7 @@ class Dashboard(QWidget):
             return
         self._send_ir_sample_start()
 
-    def continue_load_cell_calibration(self):
+    def continue_load_cell_calibration(self) -> None:
         if self.arduino_serial is None or not self.arduino_serial.is_open:
             self.system_log_received.emit(
                 "Cannot continue load-cell calibration: Arduino is not connected."
@@ -636,7 +648,7 @@ class Dashboard(QWidget):
             return
         self.write_arduino_command("C\n")
 
-    def submit_load_cell_calibration_mass(self, command):
+    def submit_load_cell_calibration_mass(self, command: object) -> None:
         if not isinstance(command, str) or not re.fullmatch(
             r"K[12],(?:\d+(?:\.\d*)?|\.\d+)",
             command,
@@ -649,13 +661,19 @@ class Dashboard(QWidget):
             return
         self.write_arduino_command(f"{command}\n")
 
-    def set_servo_angle(self, motor, angle):
+    def set_servo_angle(self, motor: int, angle: int) -> None:
         if motor not in (1, 2):
             return
         angle = max(0, min(int(angle), 180))
         self.write_arduino_command(f"A{motor},{angle}\n")
 
-    def set_servo_sweep_config(self, motor, minimum, maximum, speed):
+    def set_servo_sweep_config(
+        self,
+        motor: int,
+        minimum: int,
+        maximum: int,
+        speed: int,
+    ) -> None:
         if motor not in (1, 2):
             return
         minimum = max(0, min(int(minimum), 175))
@@ -666,13 +684,13 @@ class Dashboard(QWidget):
         self.servo_sweep_speeds[motor] = speed
         self.send_servo_sweep_config(motor)
 
-    def send_servo_sweep_config(self, motor):
+    def send_servo_sweep_config(self, motor: int) -> None:
         self.write_arduino_command(
             f"R{motor},{self.servo_minimum_angles[motor]},"
             f"{self.servo_maximum_angles[motor]},{self.servo_sweep_speeds[motor]}\n"
         )
 
-    def set_servo_sweeping(self, motor, enabled):
+    def set_servo_sweeping(self, motor: int, enabled: bool) -> None:
         if motor not in (1, 2):
             return
         self.servo_sweeping[motor] = bool(enabled)
@@ -681,18 +699,18 @@ class Dashboard(QWidget):
             self.send_servo_sweep_config(motor)
         self.write_arduino_command(f"W{motor},{1 if enabled else 0}\n")
 
-    def write_arduino_command(self, command):
+    def write_arduino_command(self, command: str) -> bool:
         if self.arduino_serial is None or not self.arduino_serial.is_open:
             return False
         try:
             self.arduino_serial.write(command.encode("ascii"))
             return True
-        except (serial.SerialException, OSError) as exc:
+        except OSError as exc:
             self.system_log_received.emit(f"Arduino serial write failed: {exc}")
             self.close_arduino_serial()
             return False
 
-    def handle_servo_status(self, message):
+    def handle_servo_status(self, message: str) -> None:
         fields = message.split(",")
         if len(fields) == 2 and fields[0] in ("SV1", "SV2"):
             try:
@@ -707,7 +725,7 @@ class Dashboard(QWidget):
             )
 
     @staticmethod
-    def parse_load_cell_weight_kg(message):
+    def parse_load_cell_weight_kg(message: str) -> float | None:
         weight_grams = Dashboard.parse_load_cell_weight_grams(message)
         if weight_grams is None or not isfinite(weight_grams):
             return None
@@ -715,7 +733,7 @@ class Dashboard(QWidget):
         return weight_grams / Dashboard.GRAMS_PER_KILOGRAM
 
     @staticmethod
-    def parse_load_cell_weight_grams(message):
+    def parse_load_cell_weight_grams(message: str) -> float | None:
         match = re.fullmatch(
             r"\s*Load\s+Cell\s+1\s*:\s*(-?(?:\d+(?:\.\d*)?|\.\d+))"
             r"\s*g\s*",
@@ -731,21 +749,21 @@ class Dashboard(QWidget):
 
     parse_load_cell_weight = parse_load_cell_weight_kg
 
-    def send_nir_scan_command(self):
+    def send_nir_scan_command(self) -> None:
         if self.arduino_serial is None or not self.arduino_serial.is_open:
             return
         command = b"S\n" if self.nir_scanning else b"P\n"
         try:
             self.arduino_serial.write(command)
-        except (serial.SerialException, OSError) as exc:
+        except OSError as exc:
             self.system_log_received.emit(f"NIR scan command failed: {exc}")
             self.close_arduino_serial()
 
-    def close_arduino_serial(self):
+    def close_arduino_serial(self) -> None:
         if self.arduino_serial is not None:
             try:
                 self.arduino_serial.close()
-            except (serial.SerialException, OSError) as exc:
+            except OSError as exc:
                 self.system_log_received.emit(
                     f"Arduino serial close failed: {exc}"
                 )
@@ -764,23 +782,23 @@ class Dashboard(QWidget):
         self._set_ir_sensor_connected(False)
         self._clear_current_weight()
 
-    def _set_ir_sensor_connected(self, connected):
+    def _set_ir_sensor_connected(self, connected: bool) -> None:
         connected = bool(connected)
         if self.ir_sensor_connected == connected:
             return
         self.ir_sensor_connected = connected
         self.ir_sensor_status_changed.emit(connected)
 
-    def _set_nir_connected(self, connected):
+    def _set_nir_connected(self, connected: bool) -> None:
         connected = bool(connected)
-        self.nir_detected = connected
+        self.nir_detected: bool = connected
         if self.nir_connected == connected:
             return
         self.nir_connected = connected
         self.nir_status_changed.emit(connected)
 
     @staticmethod
-    def parse_object_count(message):
+    def parse_object_count(message: str) -> int | None:
         match = re.fullmatch(
             r"\s*Object Count:\s*(\d+)\s*",
             message,
@@ -796,14 +814,17 @@ class Dashboard(QWidget):
             self.current_weight_changed.emit(None)
             self.emit_bean_data_update()
 
-    def update_good_weight_display(self, good_weight_grams):
+    def update_good_weight_display(
+        self,
+        good_weight_grams: float | None,
+    ) -> None:
         self.weight_readings_changed.emit(good_weight_grams)
         if good_weight_grams is None:
             self.batch_weight_value.setText("0")
             return
         self.batch_weight_value.setText(f"{good_weight_grams:.2f}")
 
-    def update_batch_weight_display(self, weight_kg):
+    def update_batch_weight_display(self, weight_kg: float | None) -> None:
         if weight_kg is None:
             self.batch_weight_value.setText("0")
             return
@@ -811,7 +832,7 @@ class Dashboard(QWidget):
             f"{weight_kg * self.GRAMS_PER_KILOGRAM:.2f}"
         )
 
-    def update_current_seed_id(self, bean_number):
+    def update_current_seed_id(self, bean_number: int) -> None:
         if bean_number <= 0:
             self.current_seed_value.setText("0" * 12)
             return
@@ -820,7 +841,7 @@ class Dashboard(QWidget):
         )
 
     @staticmethod
-    def parse_bean_count(message):
+    def parse_bean_count(message: str) -> int | None:
         match = re.fullmatch(
             r"(?:BEAN_COUNT|FINAL_BEAN_COUNT|OBJECT COUNT):\s*(\d+)",
             message.strip(),
@@ -828,7 +849,7 @@ class Dashboard(QWidget):
         )
         return int(match.group(1)) if match is not None else None
 
-    def update_total_bean_count(self, message):
+    def update_total_bean_count(self, message: str) -> bool:
         count = self.parse_bean_count(message)
         if count is None:
             return False
@@ -841,22 +862,24 @@ class Dashboard(QWidget):
         self._display_total_bean_count(count)
         return True
 
-    def increment_total_bean_count(self):
+    def increment_total_bean_count(self) -> bool:
         self._display_total_bean_count(self.total_bean_count + 1)
         return True
 
-    def _display_total_bean_count(self, count):
+    def _display_total_bean_count(self, count: int) -> None:
         self.total_bean_count = count
         self.total_beans_value.setText(str(count))
         self.update_current_seed_id(count)
         self.emit_bean_data_update()
 
-    def emit_bean_data_update(self):
+    def emit_bean_data_update(self) -> None:
         self.bean_data_updated.emit(
             self.get_bean_data_snapshot()
         )
 
-    def get_bean_data_snapshot(self):
+    def get_bean_data_snapshot(
+        self,
+    ) -> dict[str, str | int | float | None]:
         return {
             "bean_id": self.current_seed_value.text(),
             "bean_count": self.total_bean_count,
@@ -870,7 +893,7 @@ class Dashboard(QWidget):
         }
 
     @staticmethod
-    def is_nir_message(message):
+    def is_nir_message(message: str) -> bool:
         normalized = message.upper()
         wavelength_message = any(
             f"{wavelength}NM:" in normalized
@@ -878,11 +901,11 @@ class Dashboard(QWidget):
         )
         return "AS7265X READY" in normalized or wavelength_message
 
-    def update_nir_status(self):
+    def update_nir_status(self) -> None:
         self._set_nir_connected(self.nir_detected)
 
     @staticmethod
-    def is_arduino_port(port):
+    def is_arduino_port(port: object) -> bool:
         port_details = " ".join(
             str(value or "")
             for value in (
@@ -913,7 +936,7 @@ class Dashboard(QWidget):
             return True
         return False
 
-    def update_responsive_layout(self):
+    def update_responsive_layout(self) -> None:
         if not hasattr(self, "middle_layout") or not hasattr(
             self, "camera_frame"
         ):
@@ -944,7 +967,7 @@ class Dashboard(QWidget):
         self.camera_frame.setFixedSize(preview_width, preview_height)
         self.dashboard_subtitle.setVisible(True)
 
-    def reflow_cards(self, columns):
+    def reflow_cards(self, columns: int) -> None:
         while self.cards_layout.count():
             self.cards_layout.takeAt(0)
 
@@ -955,13 +978,13 @@ class Dashboard(QWidget):
                 index % columns,
             )
 
-    def update_camera_status(self, message):
-        if self.camera_frame.pixmap() is not None:
+    def update_camera_status(self, message: str) -> None:
+        if not self.camera_frame.pixmap().isNull():
             self.camera_frame.clear()
         self.camera_frame.setText(message)
         self.camera_frame.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-    def stop_camera(self):
+    def stop_camera(self) -> None:
         was_enabled = self.camera_enabled
         self.camera_enabled = False
         self.ai_inference_token += 1
@@ -978,7 +1001,7 @@ class Dashboard(QWidget):
         if was_enabled:
             self.system_log_received.emit("Camera stream stopped.")
 
-    def open_camera(self, source):
+    def open_camera(self, source: int | str) -> cv2.VideoCapture:
         logging = getattr(getattr(cv2, "utils", None), "logging", None)
         if logging is None:
             return cv2.VideoCapture(source, cv2.CAP_DSHOW)
@@ -990,7 +1013,7 @@ class Dashboard(QWidget):
         finally:
             logging.setLogLevel(previous_level)
 
-    def start_camera(self):
+    def start_camera(self) -> None:
         if not self.camera_usage_enabled:
             self.system_log_received.emit(
                 "Camera use is disabled in system settings."
@@ -1009,7 +1032,6 @@ class Dashboard(QWidget):
         empty_message = config["empty_message"]
 
         for source in candidates:
-            capture = None
             try:
                 capture = self.open_camera(source)
             except (cv2.error, OSError) as exc:
@@ -1017,7 +1039,7 @@ class Dashboard(QWidget):
                     f"Camera could not be opened at source {source}: {exc}"
                 )
                 continue
-            if capture is not None and capture.isOpened():
+            if capture.isOpened():
                 if self.camera_stream_overrides:
                     unsupported_stream_settings = apply_camera_stream_settings(
                         capture,
@@ -1026,12 +1048,11 @@ class Dashboard(QWidget):
                     self._update_camera_stream_status(
                         unsupported_stream_settings
                     )
-                if self.camera_control_overrides:
-                    unsupported_controls = apply_camera_controls(
-                        capture,
-                        self.camera_control_overrides,
-                    )
-                    self._update_camera_controls_status(unsupported_controls)
+                unsupported_controls = apply_camera_controls(
+                    capture,
+                    camera_controls_for_start(self.camera_control_values),
+                )
+                self._update_camera_controls_status(unsupported_controls)
                 try:
                     has_frame, frame = capture.read()
                 except (cv2.error, OSError) as exc:
@@ -1040,7 +1061,7 @@ class Dashboard(QWidget):
                     )
                     capture.release()
                     continue
-                if not has_frame or frame is None:
+                if not has_frame or frame.size == 0:
                     capture.release()
                     if not self.camera_stream_overrides:
                         continue
@@ -1057,18 +1078,14 @@ class Dashboard(QWidget):
                             f"Camera could not be reopened in default mode: {exc}"
                         )
                         continue
-                    if capture is None or not capture.isOpened():
-                        if capture is not None:
-                            capture.release()
+                    if not capture.isOpened():
+                        capture.release()
                         continue
-                    if self.camera_control_overrides:
-                        unsupported_controls = apply_camera_controls(
-                            capture,
-                            self.camera_control_overrides,
-                        )
-                        self._update_camera_controls_status(
-                            unsupported_controls
-                        )
+                    unsupported_controls = apply_camera_controls(
+                        capture,
+                        camera_controls_for_start(self.camera_control_values),
+                    )
+                    self._update_camera_controls_status(unsupported_controls)
                     try:
                         has_frame, frame = capture.read()
                     except (cv2.error, OSError) as exc:
@@ -1077,7 +1094,7 @@ class Dashboard(QWidget):
                         )
                         capture.release()
                         continue
-                    if not has_frame or frame is None:
+                    if not has_frame or frame.size == 0:
                         capture.release()
                         continue
                     self.camera_controls_status_changed.emit(
@@ -1122,15 +1139,18 @@ class Dashboard(QWidget):
                 self.system_log_received.emit("Camera stream started.")
                 return
 
-            if capture is not None:
-                capture.release()
+            capture.release()
 
         self.camera_enabled = False
         self.update_camera_status(empty_message)
         self.update_camera_status_indicator()
         self.system_log_received.emit("Camera stream could not be started.")
 
-    def set_camera_control(self, property_id, value):
+    def set_camera_control(
+        self,
+        property_id: int,
+        value: float,
+    ) -> bool | None:
         if property_id not in self.camera_control_values:
             raise ValueError(f"Unsupported camera control property: {property_id}")
         self.camera_control_values[property_id] = value
@@ -1148,10 +1168,17 @@ class Dashboard(QWidget):
         )
         return not unsupported_controls
 
-    def set_camera_stream_setting(self, property_id, value):
+    def set_camera_stream_setting(
+        self,
+        property_id: int,
+        value: float,
+    ) -> bool | None:
         return self.set_camera_stream_settings({property_id: value})
 
-    def set_camera_stream_settings(self, values):
+    def set_camera_stream_settings(
+        self,
+        values: Mapping[int, float],
+    ) -> bool | None:
         invalid_properties = set(values) - set(CAMERA_STREAM_PROPERTY_NAMES)
         if invalid_properties:
             property_id = next(iter(invalid_properties))
@@ -1211,10 +1238,13 @@ class Dashboard(QWidget):
         return None
 
     @staticmethod
-    def _camera_timer_interval_ms(frame_rate):
+    def _camera_timer_interval_ms(frame_rate: float) -> int:
         return max(1, round(1000 / frame_rate))
 
-    def _update_camera_stream_status(self, unsupported_settings):
+    def _update_camera_stream_status(
+        self,
+        unsupported_settings: list[str],
+    ) -> None:
         if unsupported_settings:
             status = "Not supported by this camera: " + ", ".join(
                 unsupported_settings
@@ -1225,9 +1255,9 @@ class Dashboard(QWidget):
 
     def _update_camera_controls_status(
         self,
-        unsupported_controls,
-        applied_message="Camera controls applied.",
-    ):
+        unsupported_controls: list[str],
+        applied_message: str = "Camera controls applied.",
+    ) -> None:
         if unsupported_controls:
             status = "Not supported by this camera: " + ", ".join(
                 unsupported_controls
@@ -1236,13 +1266,13 @@ class Dashboard(QWidget):
             status = applied_message
         self.camera_controls_status_changed.emit(status)
 
-    def toggle_camera(self):
+    def toggle_camera(self) -> None:
         if self.camera_enabled:
             self.stop_camera()
         else:
             self.start_camera()
 
-    def update_camera_feed(self):
+    def update_camera_feed(self) -> None:
         if not self.camera_enabled or self.camera_capture is None or not self.camera_capture.isOpened():
             mode = "Camera"
             message = self.camera_modes.get(mode, self.camera_modes["Camera"])["empty_message"]
@@ -1260,7 +1290,7 @@ class Dashboard(QWidget):
             self.system_log_received.emit(f"Camera frame read failed: {exc}")
             self.stop_camera()
             return
-        if not ret or frame is None:
+        if not ret or frame.size == 0:
             self.system_log_received.emit("Camera frame read failed; stream stopped.")
             self.stop_camera()
             return
@@ -1295,11 +1325,11 @@ class Dashboard(QWidget):
 
     def _on_ai_inference_completed(
         self,
-        token,
-        result,
-        annotated_frame,
-        error,
-    ):
+        token: int,
+        result: Any,
+        annotated_frame: cv2.Mat | NDArray[Any] | None,
+        error: str,
+    ) -> None:
         if token != self.ai_inference_token:
             self.ai_inference_busy = False
             self.ai_inference_task = None
@@ -1330,7 +1360,11 @@ class Dashboard(QWidget):
 
     def update_quality_from_ai_result(self, result: Any) -> str:
         boxes = getattr(result, "boxes", None)
-        names = getattr(result, "names", {})
+        names: dict[int, str] | Sequence[str] = getattr(
+            result,
+            "names",
+            {},
+        )
         candidates: list[tuple[float, str]] = []
         if boxes is not None:
             for box in boxes:
@@ -1366,10 +1400,10 @@ class Dashboard(QWidget):
             self._send_bean_sort_command(quality)
         return quality
 
-    def update_quality_totals_display(self):
+    def update_quality_totals_display(self) -> None:
         self.quality_summary_value.setText("Classification")
 
-    def _send_bean_sort_command(self, quality):
+    def _send_bean_sort_command(self, quality: str) -> bool:
         if not self.awaiting_bean_classification:
             return False
         if self.arduino_serial is None or not self.arduino_serial.is_open:
@@ -1398,16 +1432,20 @@ class Dashboard(QWidget):
         return True
 
     @staticmethod
-    def _parse_nir_spectrum(line):
+    def _parse_nir_spectrum(line: str) -> list[float] | None:
         readings = AS7265XReader.parse_line(line)
         if len(readings) != 18 or any(
             reading.value is None or not isfinite(reading.value)
             for reading in readings
         ):
             return None
-        return [reading.value for reading in readings]
+        return [
+            reading.value
+            for reading in readings
+            if reading.value is not None
+        ]
 
-    def _classify_nir_sample(self):
+    def _classify_nir_sample(self) -> None:
         spectra = self.nir_sample_spectra
         self.nir_sample_spectra = []
         self.nir_pending_spectrum = None
@@ -1469,7 +1507,7 @@ class Dashboard(QWidget):
             self.not_good_bean_count += 1
             self.update_quality_totals_display()
 
-    def _reject_unclassified_bean(self):
+    def _reject_unclassified_bean(self) -> None:
         if not self.awaiting_bean_classification:
             return
         self.system_log_received.emit(
@@ -1549,7 +1587,11 @@ class Dashboard(QWidget):
         )
         return True
 
-    def set_nir_model_path(self, model_path, log_result=True):
+    def set_nir_model_path(
+        self,
+        model_path: str | Path | None,
+        log_result: bool = True,
+    ) -> bool:
         model_path = str(model_path or "").strip()
         try:
             classifier, model_file = load_nir_classifier(model_path)
@@ -1566,7 +1608,7 @@ class Dashboard(QWidget):
         self.nir_model_path = str(model_file)
         self.nir_model_error = ""
         compatibility_warning = None
-        other_warnings = []
+        other_warnings: list[str] = []
         for warning in classifier.load_warnings:
             versions = re.search(
                 r"from version (\d+(?:\.\d+)*) when using version "
@@ -1596,7 +1638,11 @@ class Dashboard(QWidget):
                 )
         return True
 
-    def render_camera_frame(self, frame, rotate=True):
+    def render_camera_frame(
+        self,
+        frame: cv2.Mat | NDArray[Any],
+        rotate: bool = True,
+    ) -> None:
         if rotate:
             frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -1621,7 +1667,7 @@ class Dashboard(QWidget):
         self.camera_frame.setPixmap(scaled)
         self.camera_frame.setText("")
 
-    def update_camera_usage_button(self):
+    def update_camera_usage_button(self) -> None:
         if self.camera_usage_button is None:
             return
         self.camera_usage_button.setChecked(self.camera_usage_enabled)
@@ -1641,13 +1687,19 @@ class Dashboard(QWidget):
         self.camera_usage_button = button
         self.update_camera_usage_button()
 
-    def set_camera_usage_enabled(self, enabled):
+    def set_camera_usage_enabled(self, enabled: bool) -> None:
         self.camera_usage_enabled = bool(enabled)
         self.update_camera_usage_button()
         if not self.camera_usage_enabled:
             self.stop_camera()
 
-    def create_card(self, title, value, unit="", choices=None):
+    def create_card(
+        self,
+        title: str,
+        value: str,
+        unit: str = "",
+        choices: Sequence[str] | None = None,
+    ) -> QFrame:
         card = QFrame()
         card.setProperty("class", "card")
         card.setObjectName("dashboard_metric_card")
@@ -1687,7 +1739,7 @@ class Dashboard(QWidget):
 
         return card
 
-    def setup_ui(self):
+    def setup_ui(self) -> None:
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(14, 12, 14, 14)
@@ -1736,15 +1788,33 @@ class Dashboard(QWidget):
             self.create_card("QUALITY", "UNDEFINED", "Classification"),
             self.create_card("TOTAL BEANS", "0", "Beans processed"),
         ]
-        self.current_seed_value = self.cards[0].findChild(QLabel, "card_value")
-        self.batch_weight_value = self.cards[1].findChild(QLabel, "card_value")
-        self.quality_value = self.cards[3].findChild(QLabel, "card_value")
-        self.quality_summary_value = self.cards[3].findChild(
+        current_seed_value = self.cards[0].findChild(QLabel, "card_value")
+        if current_seed_value is None:
+            raise RuntimeError("The current-seed card has no value label.")
+        self.current_seed_value = current_seed_value
+
+        batch_weight_value = self.cards[1].findChild(QLabel, "card_value")
+        if batch_weight_value is None:
+            raise RuntimeError("The batch-weight card has no value label.")
+        self.batch_weight_value = batch_weight_value
+
+        quality_value = self.cards[3].findChild(QLabel, "card_value")
+        if quality_value is None:
+            raise RuntimeError("The quality card has no value label.")
+        self.quality_value = quality_value
+
+        quality_summary_value = self.cards[3].findChild(
             QLabel,
             "card_unit",
         )
+        if quality_summary_value is None:
+            raise RuntimeError("The quality card has no unit label.")
+        self.quality_summary_value = quality_summary_value
         self.update_quality_totals_display()
-        self.total_beans_value = self.cards[-1].findChild(QLabel, "card_value")
+        total_beans_value = self.cards[-1].findChild(QLabel, "card_value")
+        if total_beans_value is None:
+            raise RuntimeError("The total-beans card has no value label.")
+        self.total_beans_value = total_beans_value
         self.card_columns = 1
         self.reflow_cards(self.card_columns)
         main_layout.addLayout(self.cards_layout)
@@ -1820,7 +1890,7 @@ class Dashboard(QWidget):
 
         main_layout.addLayout(button_layout)
 
-    def update_camera_status_indicator(self):
+    def update_camera_status_indicator(self) -> None:
         self.camera_connected = bool(QMediaDevices.videoInputs())
         self.camera_status_changed.emit(
             "CONNECTED" if self.camera_connected else "NOT CONNECTED"

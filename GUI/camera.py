@@ -34,6 +34,7 @@ from .camera_controls import (
     CAMERA_RESOLUTIONS,
     apply_camera_controls,
     apply_camera_stream_settings,
+    camera_controls_for_start,
 )
 from .quality import normalize_quality_category
 
@@ -728,15 +729,7 @@ class CameraPage(QWidget):
         self.model, _model_file = load_yolo_model()
 
     def _camera_controls_for_start(self):
-        controls = self.camera_control_values.copy()
-        if self.focus_auto_button.isChecked():
-            controls.pop(cv2.CAP_PROP_FOCUS, None)
-        if self.exposure_auto_button.isChecked():
-            controls.pop(cv2.CAP_PROP_EXPOSURE, None)
-            controls.pop(cv2.CAP_PROP_GAIN, None)
-        if self.white_balance_auto_button.isChecked():
-            controls.pop(cv2.CAP_PROP_WB_TEMPERATURE, None)
-        return controls
+        return camera_controls_for_start(self.camera_control_values)
 
     def start_camera(self):
         resolution = self.resolution_selector.currentText()
