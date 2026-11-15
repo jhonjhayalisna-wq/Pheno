@@ -31,6 +31,7 @@ from .camera_controls import (
     camera_controls_for_start,
 )
 from .quality import (
+    QUALITY_CATEGORIES,
     is_foreign_object_category,
     normalize_quality_category,
 )
@@ -174,6 +175,7 @@ class Dashboard(QWidget):
         self.last_ai_result: Any | None = None
         self.ai_model: Any | None = None
         self.ai_model_error = ""
+        self.ai_model_warning = ""
         self.nir_classifier: NIRClassifier | None = None
         self.nir_model_path = str(default_nir_model_path())
         self.nir_model_error = ""
@@ -1473,6 +1475,7 @@ class Dashboard(QWidget):
             self.last_ai_frame = None
             self.update_quality_from_ai_result(None)
             self.ai_model_error = error
+            self.ai_model_warning = ""
             self.system_log_received.emit(error)
             return
         self.last_ai_result = result
@@ -1691,10 +1694,48 @@ class Dashboard(QWidget):
         self.update_quality_from_ai_result(None)
         self.ai_model = model
         self.ai_model_error = ""
+        model_names = getattr(model, "names", {})
+        if isinstance(model_names, dict):
+            class_names = tuple(model_names.values())
+        else:
+            try:
+                class_names = tuple(model_names)
+            except TypeError:
+                class_names = ()
+        present_categories = {
+            category
+            for class_name in class_names
+            if (category := normalize_quality_category(class_name)) is not None
+        }
+        missing_categories = [
+            category
+            for category in QUALITY_CATEGORIES
+            if category not in present_categories
+        ]
+        missing_foreign_object = not any(
+            is_foreign_object_category(class_name)
+            for class_name in class_names
+        )
+        warning_parts = []
+        if missing_categories:
+            warning_parts.append(
+                "missing bean classes: " + ", ".join(missing_categories)
+            )
+        if missing_foreign_object:
+            warning_parts.append("missing foreign-object detection")
+        self.ai_model_warning = (
+            "Camera model is " + "; ".join(warning_parts) + "."
+            if warning_parts
+            else ""
+        )
         if log_result:
             self.system_log_received.emit(
                 f"AI model loaded from {model_file}."
             )
+            if self.ai_model_warning:
+                self.system_log_received.emit(
+                    f"AI model coverage warning: {self.ai_model_warning}"
+                )
 
     def set_ai_model_file(
         self,

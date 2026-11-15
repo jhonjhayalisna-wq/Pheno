@@ -1367,6 +1367,36 @@ class HardwareCompatibilityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "18 measurements"):
             classifier.predict([[0.5] * 17 for _ in range(3)])
 
+    def test_nir_analysis_discloses_unavailable_moisture_estimation(self):
+        page = NIRAnalysisPage()
+        self.addCleanup(page.close)
+
+        subtitle = next(
+            label
+            for label in page.findChildren(QLabel)
+            if label.text() == "Spectral scan and bean classification"
+        )
+        self.assertIsNotNone(subtitle)
+        self.assertEqual(page.moisture_content_value.text(), "Not available")
+
+        page.update_bean_data({"bean_id": "bean-1", "moisture": None})
+
+        self.assertEqual(page.moisture_content_value.text(), "Not available")
+
+    def test_settings_discloses_that_moisture_offset_is_unimplemented(self):
+        page = SettingsPage()
+        self.addCleanup(page.port_refresh_timer.stop)
+        self.addCleanup(page.close)
+
+        status = page.findChild(QLabel, "moisture_estimation_status")
+
+        self.assertIsNotNone(status)
+        self.assertIn("calibrated NIR moisture model", status.text())
+        self.assertNotIn(
+            "Moisture offset",
+            [label.text() for label in page.findChildren(QLabel)],
+        )
+
     def test_nir_spectral_heading_and_bean_id_are_on_same_row(self):
         page = NIRAnalysisPage()
         self.addCleanup(page.close)

@@ -11,27 +11,43 @@ The sorting controller uses two separate Arduino sketches:
 
 | Component | Mega 2560 pins |
 |---|---|
-| IR bean sensor output | D2 |
-| Load Cell 1 / HX711 DT, SCK | D6, D7 |
+| IR bean sensor output (active LOW) | D13 |
+| Load Cell 1 / HX711 DT, SCK | D3, D2 |
 | Servo 1, Servo 2 signal | D9, D10 |
 | Stepper Motor 1 / ULN2003 IN1-IN4 | D22-D25 |
 | Stepper Motor 2 / ULN2003 IN1-IN4 | D26-D29 |
-| Vibrator motor transistor base | D30 through 1 kΩ |
+| DC conveyor motor driver control input | D30 |
 | Nano TX D3 to Mega RX1 | D19 |
 | Mega TX1 D18 to Nano RX D2 | D2 on Nano |
 
-Connect the AS7265X to the Nano using A4 (SDA) and A5 (SCL). Join the Nano
-ground, Mega ground, sensor grounds, and external motor/servo supply grounds.
-Use the voltage supported by the exact AS7265X breakout board. Power servos
-and motors from the external regulated supplies in the wiring guide; do not
-power them from the Mega's 5 V pin. The vibrator motor requires its transistor
-and flyback diode. The Nano uses SoftwareSerial on D2 (RX) and D3 (TX) at
-38,400 baud for the Mega link; the Mega uses Serial1 at the same rate. The
-Mega's USB serial connection to the dashboard remains at 115,200 baud. Remove
-the Mega UART wires while uploading to the Nano, then reconnect TX-to-RX and
-RX-to-TX. The Nano may remain connected to USB for power, but it will appear as
-another serial port. In dashboard Settings, select the Mega's port in the
-Arduino field; the dashboard must not use the Nano's USB serial port.
+Both Mega sketches use the same pin assignments shown below.
+
+Connect the AS7265X to the Nano using A4 (SDA) and A5 (SCL). Connect the
+sensor's supply only to a voltage supported by its breakout board. Connect
+Nano D3 (TX) to Mega D19 (RX1), Mega D18 (TX1) to Nano D2 (RX), and join their
+grounds. The Nano uses SoftwareSerial at 38,400 baud; the Mega USB serial link
+to the Dashboard uses 115,200 baud.
+
+Connect the camera to the computer by USB, not to an Arduino pin. Camera
+inference runs in the Dashboard on the computer; the Dashboard sends the
+classification command to the Mega. Select the Mega's USB serial port in
+Dashboard Settings. Do not run `internal_detect.py` at the same time: it opens
+its own serial port and expects a different scan format.
+
+The bundled camera YOLO model currently contains `broken`, `double`, `flat`,
+`germinated`, `good`, `insect_damage`, `moldy`, and `foreign object`. It does
+not contain `slaty`; Dashboard reports a model-coverage warning for this
+missing bean class. Use weights trained with all eight bean categories before
+relying on complete camera classification. Class-name coverage does not prove
+classification accuracy.
+
+Use the D30 output only as a **logic-level driver control** for the conveyor.
+Do not connect a DC motor directly to the Mega. Use a motor driver or
+logic-level MOSFET rated for the motor's voltage and stall current, with a
+flyback path for a brushed DC motor. Power the conveyor, stepper drivers, and
+servos from suitable external supplies, not the Mega's 5 V pin. Join supply
+grounds to Mega GND. Put a correctly rated emergency stop in the actuator
+power path and guard moving belts, gears, and linkages.
 
 ## Startup and calibration
 
@@ -60,6 +76,11 @@ it as good. If NIR inference is unavailable, the dashboard reports the issue
 and the sorter falls back to the camera classification. An incompatible
 scikit-learn model version is also reported; validate model predictions with
 known samples before relying on physical sorting.
+
+This classifier does not estimate moisture percentage. Moisture AI requires a
+separate regression model trained and validated using NIR spectra paired with
+reference moisture measurements; do not treat a class prediction or
+confidence as moisture content.
 
 The load-cell value is only meaningful after calibrating the assembled
 good-bean platform with a known mass. The displayed weight is the stable total

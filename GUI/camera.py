@@ -1023,12 +1023,20 @@ class CameraPage(QWidget):
 
     @staticmethod
     def _fit_pixmap(pixmap, label):
+        target_size = label.size()
         scaled = pixmap.scaled(
-            label.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
+            target_size,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
             Qt.TransformationMode.SmoothTransformation,
         )
-        return scaled
+        x_offset = max(0, (scaled.width() - target_size.width()) // 2)
+        y_offset = max(0, (scaled.height() - target_size.height()) // 2)
+        return scaled.copy(
+            x_offset,
+            y_offset,
+            target_size.width(),
+            target_size.height(),
+        )
 
 
 from PySide6.QtCore import Qt

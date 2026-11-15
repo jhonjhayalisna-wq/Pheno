@@ -173,6 +173,25 @@ class AiModelIntegrationTests(unittest.TestCase):
         page.port_refresh_timer.stop()
         page.close()
 
+    def test_settings_shows_ai_model_category_coverage_warning(self):
+        class FakeController:
+            camera_usage_enabled = True
+            ai_model_error = ""
+            ai_model_warning = "Camera model is missing bean classes: SLATY."
+
+            def set_camera_usage_button(self, _button):
+                pass
+
+            def set_camera_usage_enabled(self, _enabled):
+                pass
+
+        page = SettingsPage(camera_controller=FakeController())
+        save_state = page.findChild(QLabel, "settings_save_state")
+
+        self.assertIn("SLATY", save_state.text())
+        page.port_refresh_timer.stop()
+        page.close()
+
     def test_dashboard_infers_and_renders_annotated_camera_frame(self):
         class FakeCapture:
             def isOpened(self):
@@ -419,6 +438,40 @@ class AiModelIntegrationTests(unittest.TestCase):
                     expected_quality,
                 )
 
+        dashboard.arduino_timer.stop()
+        dashboard.close()
+
+    def test_dashboard_warns_when_model_omits_a_bean_category(self):
+        class FakeModel:
+            names = {
+                0: "broken",
+                1: "double",
+                2: "flat",
+                3: "germinated",
+                4: "good",
+                5: "insect_damage",
+                6: "moldy",
+                7: "foreign object",
+            }
+
+        with patch(
+            "GUI.dashboard.load_yolo_model",
+            return_value=(None, bundled_model_file()),
+        ):
+            with patch.object(Dashboard, "update_arduino_status"):
+                dashboard = Dashboard()
+
+        dashboard._activate_ai_model(
+            FakeModel(),
+            bundled_model_file(),
+            log_result=False,
+        )
+
+        self.assertIn("SLATY", dashboard.ai_model_warning)
+        self.assertNotIn(
+            "foreign-object detection",
+            dashboard.ai_model_warning,
+        )
         dashboard.arduino_timer.stop()
         dashboard.close()
 

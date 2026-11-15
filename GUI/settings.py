@@ -198,10 +198,16 @@ class SettingsPage(QWidget):
         weight_input.setDecimals(3)
         weight_input.setSuffix(" g")
         add_centered_form_row(sensor_form, "Load cell offset", weight_input)
-        moisture_input = QDoubleSpinBox()
-        moisture_input.setRange(-1000000, 1000000)
-        moisture_input.setDecimals(3)
-        add_centered_form_row(sensor_form, "Moisture offset", moisture_input)
+        moisture_status = QLabel(
+            "Not available: a calibrated NIR moisture model is required."
+        )
+        moisture_status.setObjectName("moisture_estimation_status")
+        moisture_status.setWordWrap(True)
+        add_centered_form_row(
+            sensor_form,
+            "Moisture estimation",
+            moisture_status,
+        )
         sensor_panel = QFrame()
         sensor_panel.setObjectName("settings_panel")
         sensor_panel.setLayout(sensor_form)
@@ -220,6 +226,11 @@ class SettingsPage(QWidget):
                 f"AI model not ready: "
                 f"{self.camera_controller.ai_model_error}"
             )
+        elif getattr(self.camera_controller, "ai_model_warning", ""):
+            save_state.setText(
+                f"AI model coverage warning: "
+                f"{self.camera_controller.ai_model_warning}"
+            )
 
         def reset_settings():
             if self.permission_check is not None and not self.permission_check():
@@ -227,7 +238,6 @@ class SettingsPage(QWidget):
                 return
             self.refresh_live_settings()
             weight_input.setValue(0)
-            moisture_input.setValue(0)
             save_state.setText("Settings reset")
 
         def save_settings():
@@ -271,6 +281,16 @@ class SettingsPage(QWidget):
                     else selected_model
                 )
             save_state.setText("Settings saved")
+            model_warning = getattr(
+                self.camera_controller,
+                "ai_model_warning",
+                "",
+            )
+            if model_warning:
+                save_state.setText(
+                    f"Settings saved. AI model coverage warning: "
+                    f"{model_warning}"
+                )
 
         reset_button.clicked.connect(reset_settings)
         save_button.clicked.connect(save_settings)

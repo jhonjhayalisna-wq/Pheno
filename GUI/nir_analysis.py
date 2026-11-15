@@ -35,7 +35,7 @@ class NIRAnalysisPage(QWidget):
 
         title_label = QLabel("NIR Analysis")
         title_label.setObjectName("page_title")
-        subtitle = QLabel("Spectral scan and moisture estimation")
+        subtitle = QLabel("Spectral scan and bean classification")
         subtitle.setObjectName("settings_description")
         layout.addWidget(title_label)
         layout.addWidget(subtitle)
@@ -139,7 +139,7 @@ class NIRAnalysisPage(QWidget):
         summary_title.setProperty("class", "section_title")
         summary.addWidget(summary_title)
         summary_values = {
-            "Moisture Content": QLabel(""),
+            "Moisture Content": QLabel("Not available"),
             "Quality": QLabel(""),
             "Confidence": QLabel(""),
         }
@@ -201,7 +201,7 @@ class NIRAnalysisPage(QWidget):
 
     def set_moisture_content(self, value: str | float | None) -> None:
         if value is None:
-            self.moisture_content_value.setText("")
+            self.moisture_content_value.setText("Not available")
         elif isinstance(value, (int, float)):
             self.moisture_content_value.setText(f"{float(value):.2f}%")
         else:

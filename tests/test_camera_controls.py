@@ -466,7 +466,7 @@ class CameraControlTests(unittest.TestCase):
     def test_admin_preview_fills_frame_with_zoomed_crop(self):
         page = CameraPage(camera_controller=object())
         self.addCleanup(page.close)
-        page.preview_box.resize(420, 500)
+        page.preview_box.setFixedSize(420, 500)
 
         page.render_frame(np.zeros((720, 1280, 3), dtype=np.uint8))
 
