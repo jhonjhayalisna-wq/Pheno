@@ -34,17 +34,17 @@ from .quality import (
 
 
 def _to_float(value: Any) -> float | None:
-    """Return value as a float, or None if it is missing, non-numeric or NaN."""
+    """Return a finite float, or None if the value is missing or invalid."""
     try:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    return None if math.isnan(number) else number
+    return number if math.isfinite(number) else None
 
 
 class BeanDataSheetPage(QWidget):
     batch_history_updated = Signal(object)
-    grading_data_updated = Signal(object, object)
+    grading_data_updated = Signal(object, object, object, object)
     BATCH_SIZE_GRAMS = 100.0
 
     TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
@@ -92,6 +92,7 @@ class BeanDataSheetPage(QWidget):
         self.current_average_moisture: float | None = None
         self.current_passed_average_moisture: float | None = None
         self.current_bean_count = 0
+        self.current_batch_weight_grams: float | None = None
         self.current_table_title = "All Bean"
         self.batch_snapshot: dict[str, Any] = {
             "bean_id": "0" * 12,
@@ -829,20 +830,20 @@ class BeanDataSheetPage(QWidget):
                 )
             )
         )
+        self.current_batch_weight_grams = batch_weight
 
         # PNS grade and bean count are scoped to this 100 g batch.
         history_rows = self._pns_sample_rows()
         batch_bean_count = len(current_records)
-        self.pns_grade_value.setText(
-            (
-                pns_grade_from_weighted_count(
-                    batch_bean_count,
-                    batch_weight,
-                )
-                if batch_bean_count > 0
-                else ""
+        pns_grade = (
+            pns_grade_from_weighted_count(
+                batch_bean_count,
+                batch_weight,
             )
+            if batch_bean_count > 0
+            else ""
         )
+        self.pns_grade_value.setText(pns_grade)
         self.total_beans_value.setText(
             str(batch_bean_count) if batch_bean_count > 0 else ""
         )
@@ -881,7 +882,21 @@ class BeanDataSheetPage(QWidget):
             else f"{passed_average_moisture:.2f}%"
         )
         quality_counts = self._quality_counts(current_records)
-        if current_records:
+        reported_good_count = _to_float(metrics.get("good_bean_count"))
+        reported_bad_count = _to_float(
+            metrics.get("not_good_bean_count")
+        )
+        if (
+            reported_good_count is not None
+            and reported_bad_count is not None
+            and reported_good_count >= 0
+            and reported_bad_count >= 0
+            and reported_good_count.is_integer()
+            and reported_bad_count.is_integer()
+        ):
+            self.good_bean_count_value.setText(str(int(reported_good_count)))
+            self.bad_bean_count_value.setText(str(int(reported_bad_count)))
+        elif current_records:
             bad_bean_count = (
                 quality_counts["MOLDY"]
                 + quality_counts["SLATY"]
@@ -906,6 +921,8 @@ class BeanDataSheetPage(QWidget):
         self.grading_data_updated.emit(
             passed_average_moisture,
             batch_bean_count,
+            pns_grade,
+            batch_weight,
         )
         self.batch_history_updated.emit(history_rows)
         self._populate_table(self.current_table_title)

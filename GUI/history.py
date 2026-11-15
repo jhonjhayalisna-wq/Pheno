@@ -30,31 +30,12 @@ class BatchRecord:
     moisture_score_percent: float
 
 
-_BATCHES = (
-    BatchRecord(
-        batch_id="0001",
-        process_date=date(2026, 11, 20),
-        price_per_kilo=250.00,
-        total_weight_kg=12.40,
-        total_beans=1248,
-        pns_grade_score=92,
-        current_weight_kg=11.85,
-        moisture_score_percent=7.2,
-    ),
-)
+def get_batches() -> tuple[BatchRecord, ...]:
+    return ()
 
 
-def get_batches():
-    return tuple(
-        sorted(_BATCHES, key=lambda batch: batch.process_date, reverse=True)
-    )
-
-
-def get_batch_by_id(batch_id):
-    return next(
-        (batch for batch in _BATCHES if batch.batch_id == batch_id),
-        None,
-    )
+def get_batch_by_id(batch_id: str) -> BatchRecord | None:
+    return None
 
 
 class BatchHistoryPage(QWidget):

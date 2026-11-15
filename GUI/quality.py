@@ -5,6 +5,7 @@ import re
 QUALITY_CATEGORIES = (
     "GOOD",
     "MOLDY",
+    "SLATY",
     "GERMINATED",
     "INSECT-DAMAGED",
     "FLAT",

@@ -45,7 +45,10 @@ from GUI.camera import CameraPage
 from GUI.dashboard import Dashboard
 from GUI.main_window import MainWindow
 from GUI.pricing import PricingSettingsPage
-from GUI.quality import pns_grade_from_weighted_count
+from GUI.quality import (
+    normalize_quality_category,
+    pns_grade_from_weighted_count,
+)
 from GUI.results import ResultsPage
 from GUI.history import get_batch_by_id, get_batches
 from GUI.nir_classifier import FEATURE_NAMES, NIRClassifier
@@ -1055,7 +1058,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             dashboard.update_total_bean_count("FINAL_BEAN_COUNT: 4")
         )
         self.assertEqual(dashboard.total_beans_value.text(), "0")
-        self.assertEqual(dashboard.current_seed_value.text(), "0" * 12)
+        self.assertEqual(dashboard.current_bean_id, "0" * 12)
 
     def test_arduino_connection_does_not_start_ir_sample_automatically(self):
         dashboard = Dashboard()
@@ -1115,7 +1118,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
 
         self.assertEqual(dashboard.batch_weight_value.text(), "1275.00")
         self.assertEqual(
-            dashboard.cards[1].findChild(QLabel, "card_title").text(),
+            dashboard.cards[0].findChild(QLabel, "card_title").text(),
             "TOTAL BATCH WEIGHT",
         )
 
@@ -1436,6 +1439,8 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(commands, [b"NIR_CLASS_NOT_GOOD\n"])
         self.assertEqual(dashboard.good_bean_count, 0)
         self.assertEqual(dashboard.not_good_bean_count, 1)
+        self.assertEqual(bean_data_page.good_bean_count_value.text(), "0")
+        self.assertEqual(bean_data_page.bad_bean_count_value.text(), "1")
         current_bean_id = dashboard.current_bean_id
         current_record = bean_data_page.bean_records[
             (bean_data_page.batch_number, current_bean_id)
@@ -2445,6 +2450,34 @@ class HardwareCompatibilityTests(unittest.TestCase):
             "₱ 1,250.00",
         )
 
+    def test_pricing_uses_current_batch_grade_and_weight(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        pricing_page = window.pricing_page
+        pricing_page.base_price_input.setText("200")
+        pricing_page.moisture_grade_score_inputs["A"].setText("100")
+        pricing_page.pns_grade_score_inputs["A"].setText("100")
+
+        window.bean_data_sheet_page.update_dashboard_metrics(
+            {
+                "bean_id": "bean-1",
+                "bean_count": 1,
+                "batch_number": 0,
+                "batch_weight_grams": 50.0,
+                "quality": "GOOD",
+                "moisture": 7.0,
+            }
+        )
+        pricing_page.save_inputs_button.click()
+
+        self.assertEqual(pricing_page.current_pns_grade, "A")
+        self.assertEqual(pricing_page.weight_input.text(), "0.050")
+        self.assertEqual(pricing_page.total_price_result.text(), "₱ 10.00")
+
+        window.dashboard_page.current_weight_changed.emit(1.0)
+        self.assertEqual(pricing_page.weight_input.text(), "0.050")
+        self.assertEqual(pricing_page.total_price_result.text(), "₱ 10.00")
+
     def test_bean_data_missing_values_remain_blank(self):
         page = BeanDataSheetPage()
         history_rows = []
@@ -3083,6 +3116,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
             },
         )
 
+    def test_quality_normalization_recognizes_slaty_beans(self):
+        self.assertEqual(normalize_quality_category("slaty beans"), "SLATY")
+
     def test_admin_panel_reuses_dashboard_and_denies_subadmin_account_creation(self):
         session = AdminSession()
         session.grant_admin()
@@ -3217,66 +3253,21 @@ class HardwareCompatibilityTests(unittest.TestCase):
 
         panel.deleteLater()
 
-    def test_admin_history_lists_sample_batch_and_shows_its_details(self):
+    def test_admin_history_does_not_show_unverified_static_batch(self):
         dashboard = FakeDashboard()
         session = AdminSession()
         session.grant_admin()
         panel = AdminControlPanel(dashboard, session)
         history_index = panel.SECTION_NAMES.index("History")
 
-        batches = get_batches()
-        self.assertEqual(len(batches), 1)
-        self.assertEqual(batches[0].batch_id, "0001")
-        self.assertIs(get_batch_by_id("0001"), batches[0])
-        self.assertIsNone(get_batch_by_id("9999"))
+        self.assertEqual(get_batches(), ())
+        self.assertIsNone(get_batch_by_id("0001"))
 
         panel.change_page(history_index)
         history = panel.history_page
         self.assertEqual(history.views.currentWidget(), history.list_view)
         entries = history.findChildren(QPushButton, "history_batch_entry")
-        self.assertEqual(len(entries), 1)
-        self.assertEqual(
-            entries[0].text(),
-            "November 20, 2026 - Batch (0001)",
-        )
-
-        entries[0].click()
-        self.assertEqual(
-            history.views.currentWidget(),
-            history.details_view,
-        )
-        self.assertEqual(
-            {
-                name: label.text()
-                for name, label in history.summary_values.items()
-            },
-            {
-                "Batch ID": "0001",
-                "Price per kilo": "₱ 250.00",
-                "Total weight": "12.40 kg",
-                "Total beans": "1,248",
-                "Overall PNS grade score": "92 / 100",
-                "Current weight": "11.85 kg",
-                "Overall moisture score": "7.2 %",
-                "Date": "Nov 20, 2026",
-            },
-        )
-        self.assertEqual(len(history.summary_cards), 8)
-        self.assertTrue(
-            all(
-                card.objectName() == "history_summary_card"
-                for card in history.summary_cards
-            )
-        )
-        back_button = history.findChild(QPushButton, "history_back_button")
-        self.assertEqual(back_button.text(), "Back")
-        self.assertIsNone(history.findChild(QLabel, "history_details_title"))
-        self.assertIn("text-align: center", back_button.styleSheet())
-        self.assertIsNone(history.findChild(QLabel, "history_more_details"))
-        back_button.click()
-        self.assertEqual(history.views.currentWidget(), history.list_view)
-        with patch("GUI.history.get_batches", return_value=()):
-            history.show_history_list()
+        self.assertEqual(len(entries), 0)
         self.assertEqual(
             history.findChild(QLabel, "history_empty_message").text(),
             "No batches yet",

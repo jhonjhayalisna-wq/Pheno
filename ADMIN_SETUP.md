@@ -39,6 +39,20 @@ percentages (which always total 100%), and a batch weight in kilograms. The
 live batch weight comes from the calibrated good-bean load cell; not-good beans
 are not weighed. Moisture/PNS scores remain manual.
 
+The AS7265X model classifies beans; it does not estimate moisture percentage.
+The firmware also has no moisture sensor input, so Current Batch moisture
+averages and classifications remain blank until a calibrated moisture
+measurement source is added. Do not interpret blank values as zero.
+
+Batch records are currently held in application memory only. There is no
+database or API-backed persistence, and the Admin History page does not display
+sample records as if they were real batches.
+
+The Current Batch A/B/C grade uses the configured bean-count-to-weight ratio.
+The separate defect-based PNS sample scorer has no authoritative PNS
+specification in this repository; validate its thresholds against the
+applicable standard before relying on it operationally.
+
 The Admin Control Panel shares the existing dashboard hardware controller.
 The Mega runs `NIR/mega_controller/mega_controller.ino`; the Nano runs
 `NIR/nano_scanner/nano_scanner.ino` and forwards AS7265X spectra to the Mega

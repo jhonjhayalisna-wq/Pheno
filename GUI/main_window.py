@@ -229,12 +229,8 @@ class MainWindow(QMainWindow):
         self.pricing_page.set_grading_data(
             self.bean_data_sheet_page.current_passed_average_moisture,
             self.bean_data_sheet_page.current_bean_count,
-        )
-        self.dashboard_page.current_weight_changed.connect(
-            self.pricing_page.set_current_weight
-        )
-        self.pricing_page.set_current_weight(
-            getattr(self.dashboard_page, "current_weight_kg", None)
+            self.bean_data_sheet_page.pns_grade_value.text(),
+            self.bean_data_sheet_page.current_batch_weight_grams,
         )
         self.dashboard_page.nir_message_received.connect(
             self.pricing_page.update_calibration_prompt

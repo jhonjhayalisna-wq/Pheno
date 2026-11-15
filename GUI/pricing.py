@@ -632,12 +632,20 @@ class PricingSettingsPage(QWidget):
         self,
         moisture_percent: float | Decimal | str | None,
         bean_count: object,
+        pns_grade: str | None = None,
+        batch_weight_grams: float | Decimal | str | None = None,
     ) -> None:
         self.current_moisture_percent = moisture_percent
         self.current_moisture_grade = self._moisture_grade_from_percentage(
             moisture_percent
         )
-        self.current_pns_grade = pns_grade_from_bean_count(bean_count)
+        self.current_pns_grade = (
+            pns_grade_from_bean_count(bean_count)
+            if pns_grade is None
+            else pns_grade.strip()
+        )
+        if batch_weight_grams is not None:
+            self.set_current_weight(float(batch_weight_grams) / 1000)
         self.pns_grade_label.setText(self.current_pns_grade)
         self._apply_grade_scores()
 

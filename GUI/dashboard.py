@@ -994,6 +994,8 @@ class Dashboard(QWidget):
         return {
             "bean_id": self.current_bean_id,
             "bean_count": self.total_bean_count,
+            "good_bean_count": self.good_bean_count,
+            "not_good_bean_count": self.not_good_bean_count,
             "batch_number": self.current_batch_number,
             "batch_weight_grams": self.current_batch_weight_grams,
             "cumulative_weight_grams": (
@@ -1560,6 +1562,7 @@ class Dashboard(QWidget):
         else:
             self.not_good_bean_count += 1
         self.update_quality_totals_display()
+        self.emit_bean_data_update()
         return True
 
     @staticmethod
@@ -1643,6 +1646,7 @@ class Dashboard(QWidget):
             self.good_bean_count = max(0, self.good_bean_count - 1)
             self.not_good_bean_count += 1
             self.update_quality_totals_display()
+            self.emit_bean_data_update()
 
     def _reject_unclassified_bean(self) -> None:
         if not self.awaiting_bean_classification:
