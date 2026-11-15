@@ -33,6 +33,31 @@ def pns_grade_from_bean_count(bean_count: object) -> str:
     return ""
 
 
+def pns_grade_from_weighted_count(
+    bean_count: object,
+    weight_grams: object,
+) -> str:
+    try:
+        count = Decimal(str(bean_count))
+        weight = Decimal(str(weight_grams))
+    except (InvalidOperation, TypeError, ValueError):
+        return ""
+    if (
+        not count.is_finite()
+        or count < 0
+        or not weight.is_finite()
+        or weight <= 0
+    ):
+        return ""
+
+    ratio = count / weight
+    if ratio < Decimal("1.01"):
+        return "A"
+    if ratio <= Decimal("1.20"):
+        return "B"
+    return "C"
+
+
 def normalize_quality_category(raw_name: object) -> str | None:
     normalized = re.sub(
         r"\s*\([^)]*\)\s*$",
@@ -44,3 +69,13 @@ def normalize_quality_category(raw_name: object) -> str | None:
     if normalized == "INSECT-DAMAGE":
         normalized = "INSECT-DAMAGED"
     return normalized if normalized in QUALITY_CATEGORIES else None
+
+
+def is_foreign_object_category(raw_name: object) -> bool:
+    normalized = re.sub(
+        r"\s*\([^)]*\)\s*$",
+        "",
+        str(raw_name).strip().upper(),
+    )
+    normalized = re.sub(r"[\s_]+", "-", normalized)
+    return normalized == "FOREIGN-OBJECT"

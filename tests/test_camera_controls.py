@@ -221,7 +221,7 @@ class CameraControlTests(unittest.TestCase):
         page.set_final_result("FOREIGN OBJECT")
         self.assertEqual(page.final_result, "UNDEFINED")
 
-    def test_camera_uses_strongest_class_without_confidence_cutoff(self):
+    def test_camera_prioritizes_low_confidence_foreign_object(self):
         class FakeBox:
             def __init__(self, confidence, class_id):
                 self.conf = [confidence]
@@ -229,7 +229,7 @@ class CameraControlTests(unittest.TestCase):
 
         class FakeResult:
             names = {0: "good", 1: "foreign object"}
-            boxes = [FakeBox(0.4, 0), FakeBox(0.2, 1)]
+            boxes = [FakeBox(0.9, 0), FakeBox(0.4, 1)]
 
         page = CameraPage()
         self.addCleanup(page.close)
@@ -237,7 +237,7 @@ class CameraControlTests(unittest.TestCase):
 
         detection = page.select_detection(FakeResult())
 
-        self.assertEqual(detection[1], "GOOD")
+        self.assertEqual(detection[1], "UNDEFINED")
         self.assertEqual(detection[0], 0.4)
 
     def test_admin_camera_preview_rotates_to_portrait_orientation(self):

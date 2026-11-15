@@ -220,6 +220,9 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(history_scroll)
 
         self.pricing_page = PricingSettingsPage()
+        self.pricing_page.pricing_summary_updated.connect(
+            self.bean_data_sheet_page.update_pricing_summary
+        )
         self.bean_data_sheet_page.grading_data_updated.connect(
             self.pricing_page.set_grading_data
         )

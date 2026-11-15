@@ -36,7 +36,10 @@ from .camera_controls import (
     apply_camera_stream_settings,
     camera_controls_for_start,
 )
-from .quality import normalize_quality_category
+from .quality import (
+    is_foreign_object_category,
+    normalize_quality_category,
+)
 
 
 STABILITY_WINDOW = 5
@@ -866,7 +869,7 @@ class CameraPage(QWidget):
         if self.model is None or result is None or not result.boxes:
             return None
         names = result.names if hasattr(result, "names") else {}
-        candidates: list[tuple[float, str, Any]] = []
+        candidates: list[tuple[float, str, Any, bool]] = []
         for box in result.boxes:
             confidence = float(box.conf[0])
             class_id = int(box.cls[0])
@@ -877,20 +880,27 @@ class CameraPage(QWidget):
             else:
                 raw_name = str(class_id)
             normalized = normalize_quality_category(raw_name)
+            is_foreign_object = is_foreign_object_category(raw_name)
             candidates.append(
-                (confidence, normalized or "UNDEFINED", box)
+                (
+                    confidence,
+                    normalized or "UNDEFINED",
+                    box,
+                    is_foreign_object,
+                )
             )
-        return (
-            max(
-                candidates,
-                key=lambda item: (
-                    item[0],
-                    item[1] == "UNDEFINED",
-                ),
-            )
-            if candidates
-            else None
+        if not candidates:
+            return None
+
+        confidence, label, box, _ = max(
+            candidates,
+            key=lambda item: (
+                item[3],
+                item[0],
+                item[1] == "UNDEFINED",
+            ),
         )
+        return confidence, label, box
 
     def update_detection(self, result):
         previous_detection = self.last_detection

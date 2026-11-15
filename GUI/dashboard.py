@@ -30,7 +30,10 @@ from .camera_controls import (
     apply_camera_stream_settings,
     camera_controls_for_start,
 )
-from .quality import normalize_quality_category
+from .quality import (
+    is_foreign_object_category,
+    normalize_quality_category,
+)
 
 if TYPE_CHECKING:
     from serial import Serial
@@ -144,6 +147,7 @@ class Dashboard(QWidget):
     servo_sweep_status_received = Signal(int, bool)
     bean_data_updated = Signal(object)
     EMEET_CAMERA_INDEX = 0
+    BATCH_LIMIT_GRAMS = 100.0
     GRAMS_PER_KILOGRAM = 1000.0
     ARDUINO_PROTOCOL_TIMEOUT_SECONDS = 5.0
     IR_SAMPLE_START_RETRY_SECONDS = 1.0
@@ -176,6 +180,9 @@ class Dashboard(QWidget):
         self.nir_model_warning = ""
         self.nir_sample_spectra: list[list[float]] = []
         self.nir_pending_spectrum: list[float] | None = None
+        self.current_nir_spectra: list[list[float]] = []
+        self.current_nir_classification: str | None = None
+        self.current_nir_confidence: float | None = None
         self.collecting_nir_scans = False
         self.current_bean_camera_quality: str | None = None
         self.ai_inference_pool = QThreadPool(self)
@@ -210,7 +217,14 @@ class Dashboard(QWidget):
         self.serial_buffer: str = ""
         self.current_weight_kg: float | None = None
         self.good_weight_grams: float | None = None
+        self.current_batch_number = 0
+        self.current_batch_weight_grams = 0.0
+        self.batch_weight_baseline_grams: float | None = None
+        self.batch_pause_pending = False
+        self.system_running = False
+        self.system_has_started = False
         self.total_bean_count = 0
+        self.bean_id_sequence = 0
         self.current_bean_id = "0" * 12
         self.quality_value = QLabel("UNDEFINED", self)
         self.quality_summary_value = QLabel("Classification", self)
@@ -218,6 +232,10 @@ class Dashboard(QWidget):
         self.quality_summary_value.hide()
         self.good_bean_count = 0
         self.not_good_bean_count = 0
+        self.nir_sample_spectra = []
+        self.nir_pending_spectrum = None
+        self.collecting_nir_scans = False
+        self._reset_current_bean_readings()
         self.bean_rotation_active = False
         self.awaiting_bean_classification = False
         self.best_rotation_quality: str | None = None
@@ -502,12 +520,17 @@ class Dashboard(QWidget):
                         weight_kg = weight_grams / self.GRAMS_PER_KILOGRAM
                         self.current_weight_kg = weight_kg
                         self.good_weight_grams = weight_grams
-                        self.update_good_weight_display(weight_grams)
+                        self._update_batch_weight(weight_grams)
+                        self.weight_readings_changed.emit(weight_grams)
+                        self.update_batch_weight_value(
+                            self.current_batch_weight_grams
+                        )
                         self.current_weight_changed.emit(weight_kg)
                         self.emit_bean_data_update()
                         self._set_arduino_status(
                             f"Live load-cell reading: {weight_kg:.3f} kg"
                         )
+                        self._pause_at_batch_limit()
                     elif message.startswith(
                         (
                             "ERROR: HX711 not ready.",
@@ -594,8 +617,34 @@ class Dashboard(QWidget):
             self.ir_sample_last_command_at = time.monotonic()
 
     def start_system(self) -> None:
+        if self.system_running:
+            return
+
+        if not self.system_has_started:
+            self.batch_weight_baseline_grams = (
+                self.good_weight_grams
+                if self.good_weight_grams is not None
+                else 0.0
+            )
+            self.system_has_started = True
+        elif self.batch_pause_pending:
+            self.current_batch_number += 1
+            self.batch_pause_pending = False
+            self.current_batch_weight_grams = 0.0
+            self.batch_weight_baseline_grams = (
+                self.good_weight_grams
+                if self.good_weight_grams is not None
+                else 0.0
+            )
+            self.update_batch_weight_value(0.0)
+
+        self.system_running = True
         self.set_ir_sample_active(True)
         self.start_camera()
+        self._update_system_controls(
+            f"Batch {self.current_batch_number:04d}: Processing"
+        )
+        self.emit_bean_data_update()
 
     def stop_system(self) -> None:
         self.set_ir_sample_active(False)
@@ -603,6 +652,46 @@ class Dashboard(QWidget):
         self.bean_rotation_active = False
         self.awaiting_bean_classification = False
         self.stop_camera()
+        self.system_running = False
+        self._update_system_controls(
+            f"Batch {self.current_batch_number:04d}: Stopped"
+        )
+
+    def _update_system_controls(self, status: str) -> None:
+        self.start_system_button.setEnabled(not self.system_running)
+        self.stop_system_button.setEnabled(self.system_running)
+        self.batch_status_value.setText(status)
+
+    def _update_batch_weight(self, cumulative_weight_grams: float) -> None:
+        if self.batch_weight_baseline_grams is None:
+            self.batch_weight_baseline_grams = 0.0
+        elif cumulative_weight_grams < self.batch_weight_baseline_grams:
+            self.batch_weight_baseline_grams = 0.0
+
+        self.current_batch_weight_grams = max(
+            0.0,
+            cumulative_weight_grams - self.batch_weight_baseline_grams,
+        )
+
+    def _pause_at_batch_limit(self) -> None:
+        if (
+            not self.ir_batch_active
+            or self.batch_pause_pending
+            or self.current_batch_weight_grams < self.BATCH_LIMIT_GRAMS
+        ):
+            return
+
+        self.batch_pause_pending = True
+        self.stop_system()
+        status = (
+            f"Batch {self.current_batch_number:04d} reached "
+            f"{self.current_batch_weight_grams:.2f} g; system paused. "
+            f"Press Start System for batch "
+            f"{self.current_batch_number + 1:04d}."
+        )
+        self._update_system_controls(status)
+        self._set_arduino_status(status)
+        self.system_log_received.emit(status)
 
     def initialize_nir_scanner(self) -> None:
         if (
@@ -824,10 +913,16 @@ class Dashboard(QWidget):
         good_weight_grams: float | None,
     ) -> None:
         self.weight_readings_changed.emit(good_weight_grams)
-        if good_weight_grams is None:
+        self.update_batch_weight_value(good_weight_grams)
+
+    def update_batch_weight_value(
+        self,
+        batch_weight_grams: float | None,
+    ) -> None:
+        if batch_weight_grams is None:
             self.batch_weight_value.setText("0")
             return
-        self.batch_weight_value.setText(f"{good_weight_grams:.2f}")
+        self.batch_weight_value.setText(f"{batch_weight_grams:.2f}")
 
     def update_batch_weight_display(self, weight_kg: float | None) -> None:
         if weight_kg is None:
@@ -870,10 +965,23 @@ class Dashboard(QWidget):
         return True
 
     def _display_total_bean_count(self, count: int) -> None:
+        if count > self.total_bean_count:
+            self.bean_id_sequence += count - self.total_bean_count
+            self._reset_current_bean_readings()
         self.total_bean_count = count
         self.total_beans_value.setText(str(count))
-        self.update_current_seed_id(count)
+        self.update_current_seed_id(
+            self.bean_id_sequence if count > 0 else 0
+        )
         self.emit_bean_data_update()
+
+    def _reset_current_bean_readings(self) -> None:
+        self.current_bean_camera_quality = None
+        self.last_quality_confidence = 0.0
+        self.quality_value.setText("UNDEFINED")
+        self.current_nir_spectra = []
+        self.current_nir_classification = None
+        self.current_nir_confidence = None
 
     def emit_bean_data_update(self) -> None:
         self.bean_data_updated.emit(
@@ -882,11 +990,13 @@ class Dashboard(QWidget):
 
     def get_bean_data_snapshot(
         self,
-    ) -> dict[str, str | int | float | None]:
+    ) -> dict[str, str | int | float | list[list[float]] | None]:
         return {
             "bean_id": self.current_bean_id,
             "bean_count": self.total_bean_count,
-            "batch_weight_grams": (
+            "batch_number": self.current_batch_number,
+            "batch_weight_grams": self.current_batch_weight_grams,
+            "cumulative_weight_grams": (
                 self.current_weight_kg * self.GRAMS_PER_KILOGRAM
                 if self.current_weight_kg is not None
                 else None
@@ -898,6 +1008,9 @@ class Dashboard(QWidget):
                 if self.quality_value.text() != "UNDEFINED"
                 else None
             ),
+            "nir_spectra": [list(scan) for scan in self.current_nir_spectra],
+            "nir_classification": self.current_nir_classification,
+            "nir_confidence": self.current_nir_confidence,
         }
 
     @staticmethod
@@ -1377,7 +1490,7 @@ class Dashboard(QWidget):
             "names",
             {},
         )
-        candidates: list[tuple[float, str]] = []
+        candidates: list[tuple[float, str, bool]] = []
         if boxes is not None:
             for box in boxes:
                 confidence = float(box.conf[0])
@@ -1389,17 +1502,23 @@ class Dashboard(QWidget):
                 else:
                     raw_name = str(class_id)
                 normalized = normalize_quality_category(raw_name)
+                is_foreign_object = is_foreign_object_category(raw_name)
                 candidates.append(
-                    (confidence, normalized or "UNDEFINED")
+                    (
+                        confidence,
+                        normalized or "UNDEFINED",
+                        is_foreign_object,
+                    )
                 )
 
-        confidence, quality = max(
+        confidence, quality, _ = max(
             candidates,
             key=lambda candidate: (
+                candidate[2],
                 candidate[0],
                 candidate[1] == "UNDEFINED",
             ),
-            default=(0.0, "UNDEFINED"),
+            default=(0.0, "UNDEFINED", False),
         )
         self.last_quality_confidence = confidence
         self.quality_value.setText(quality)
@@ -1461,6 +1580,9 @@ class Dashboard(QWidget):
         spectra = self.nir_sample_spectra
         self.nir_sample_spectra = []
         self.nir_pending_spectrum = None
+        self.current_nir_spectra = [list(scan) for scan in spectra]
+        self.current_nir_classification = "UNAVAILABLE"
+        self.current_nir_confidence = None
         if self.nir_classifier is None:
             error = self.nir_model_error or "NIR model is not loaded."
             self.system_log_received.emit(
@@ -1501,11 +1623,14 @@ class Dashboard(QWidget):
                     prediction.label.upper(),
                     prediction.confidence * 100.0,
                 )
+                self.current_nir_classification = prediction.label.upper()
+                self.current_nir_confidence = prediction.confidence
                 self.system_log_received.emit(
                     f"NIR AI classified bean as {prediction.label.upper()} "
                     f"({prediction.confidence * 100.0:.1f}% confidence)."
                 )
 
+        self.emit_bean_data_update()
         if not self.write_arduino_command(command):
             self.system_log_received.emit(
                 "NIR classification result was not sent to the Arduino."
@@ -1877,6 +2002,7 @@ class Dashboard(QWidget):
         stop_button = AnimatedButton("Stop System")
         stop_button.setObjectName("stop_button")
         self.stop_system_button = stop_button
+        stop_button.setEnabled(False)
         start_button.setMinimumWidth(150)
         stop_button.setMinimumWidth(150)
 
@@ -1885,6 +2011,11 @@ class Dashboard(QWidget):
         button_layout.addWidget(stop_button)
 
         main_layout.addLayout(button_layout)
+        self.batch_status_value = QLabel("")
+        self.batch_status_value.setObjectName("batch_status_value")
+        self.batch_status_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.batch_status_value.setWordWrap(True)
+        main_layout.addWidget(self.batch_status_value)
 
     def update_camera_status_indicator(self) -> None:
         self.camera_connected = bool(QMediaDevices.videoInputs())

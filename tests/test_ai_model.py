@@ -349,7 +349,7 @@ class AiModelIntegrationTests(unittest.TestCase):
         dashboard.arduino_timer.stop()
         dashboard.close()
 
-    def test_dashboard_accepts_low_confidence_and_prefers_strongest_class(self):
+    def test_dashboard_prioritizes_low_confidence_foreign_object(self):
         class FakeBox:
             def __init__(self, confidence, class_id):
                 self.conf = [confidence]
@@ -357,7 +357,7 @@ class AiModelIntegrationTests(unittest.TestCase):
 
         class FakeResult:
             names = {0: "good", 1: "foreign object"}
-            boxes = [FakeBox(0.4, 0), FakeBox(0.2, 1)]
+            boxes = [FakeBox(0.9, 0), FakeBox(0.4, 1)]
 
         with patch(
             "GUI.dashboard.load_yolo_model",
@@ -368,7 +368,7 @@ class AiModelIntegrationTests(unittest.TestCase):
 
         self.assertEqual(
             dashboard.update_quality_from_ai_result(FakeResult()),
-            "GOOD",
+            "UNDEFINED",
         )
         self.assertEqual(dashboard.last_quality_confidence, 0.4)
         dashboard.arduino_timer.stop()

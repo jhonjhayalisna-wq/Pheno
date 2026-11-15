@@ -1,8 +1,11 @@
+from collections.abc import Callable, Mapping
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from typing import TypedDict
 
 from PySide6.QtCore import QLocale, Qt, Signal
-from PySide6.QtGui import QDoubleValidator
+from PySide6.QtGui import QDoubleValidator, QShowEvent
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -17,26 +20,44 @@ from PySide6.QtWidgets import (
 from .quality import pns_grade_from_bean_count
 
 
+class PriceCalculationResult(TypedDict):
+    moisture_contribution: Decimal
+    pns_contribution: Decimal
+    quality_score: Decimal
+    price_per_kilo: Decimal
+    total_price: Decimal | None
+
+
+class PNSGradeResult(TypedDict):
+    score: int
+    grade: str
+
+
 class PricingSettingsPage(QWidget):
     calibration_continue_requested = Signal()
     calibration_mass_requested = Signal(str)
+    pricing_summary_updated = Signal(str, str, str)
 
-    def __init__(self, permission_check=None):
+    def __init__(
+        self,
+        permission_check: Callable[[], bool] | None = None,
+    ) -> None:
         super().__init__()
         self.setObjectName("pricing_settings_page")
         self.permission_check = permission_check
-        self.total_price_unlocked = False
-        self.current_moisture_percent = None
-        self.current_moisture_grade = ""
-        self.current_pns_grade = ""
+        self.total_price_unlocked: bool = False
+        self.current_moisture_percent: float | Decimal | str | None = None
+        self.current_moisture_grade: str = ""
+        self.current_pns_grade: str = ""
+        self._calibration_cell: int | None = None
         self._setup_ui()
         self._update_calculation()
 
-    def showEvent(self, event):
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self._align_total_card_height()
 
-    def _align_total_card_height(self):
+    def _align_total_card_height(self) -> None:
         total_card = self.total_price_result.parentWidget()
         if total_card is None:
             return
@@ -51,14 +72,17 @@ class PricingSettingsPage(QWidget):
 
     @staticmethod
     def calculate_price(
-        price_per_kilo,
-        moisture_score,
-        pns_score,
-        weight_kg,
-        moisture_percent,
-    ):
-        values = (price_per_kilo, moisture_score, pns_score)
-        if any(value is None for value in values):
+        price_per_kilo: int | float | Decimal | None,
+        moisture_score: int | float | Decimal | None,
+        pns_score: int | float | Decimal | None,
+        weight_kg: int | float | Decimal | None,
+        moisture_percent: int | float | Decimal,
+    ) -> PriceCalculationResult | None:
+        if (
+            price_per_kilo is None
+            or moisture_score is None
+            or pns_score is None
+        ):
             return None
         if (
             price_per_kilo < 0
@@ -112,11 +136,11 @@ class PricingSettingsPage(QWidget):
 
     @staticmethod
     def calculate_pns_grade(
-        bean_count,
-        moldy_percent,
-        slaty_percent,
-        defected_percent,
-    ):
+        bean_count: int | float | Decimal | str | None,
+        moldy_percent: int | float | Decimal | str | None,
+        slaty_percent: int | float | Decimal | str | None,
+        defected_percent: int | float | Decimal | str | None,
+    ) -> PNSGradeResult | None:
         values = (
             bean_count,
             moldy_percent,
@@ -166,7 +190,7 @@ class PricingSettingsPage(QWidget):
             }
         return {"score": 60, "grade": "Substandard"}
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(36, 20, 36, 8)
         layout.setSpacing(12)
@@ -186,8 +210,9 @@ class PricingSettingsPage(QWidget):
 
         panels = QHBoxLayout()
         panels.setSpacing(20)
-        controls_panel = self._create_panel("Pricing controls")
-        controls_layout = controls_panel.layout()
+        controls_panel, controls_layout = self._create_panel(
+            "Pricing controls"
+        )
         controls_layout.setSpacing(0)
         controls_layout.addStretch(1)
 
@@ -272,8 +297,7 @@ class PricingSettingsPage(QWidget):
 
         panels.addWidget(controls_panel, 1)
 
-        result_panel = self._create_panel("Grade Criteria")
-        result_layout = result_panel.layout()
+        result_panel, result_layout = self._create_panel("Grade Criteria")
         (
             self.moisture_grade_score_inputs,
             self.pns_grade_score_inputs,
@@ -362,13 +386,13 @@ class PricingSettingsPage(QWidget):
         self._align_total_card_height()
 
     @staticmethod
-    def _create_form_label(text):
+    def _create_form_label(text: str) -> QLabel:
         label = QLabel(text)
         label.setObjectName("pricing_form_label")
         return label
 
     @staticmethod
-    def _create_panel(title):
+    def _create_panel(title: str) -> tuple[QFrame, QVBoxLayout]:
         panel = QFrame()
         panel.setObjectName("pricing_panel")
         panel_layout = QVBoxLayout(panel)
@@ -378,9 +402,12 @@ class PricingSettingsPage(QWidget):
         heading.setObjectName("pricing_panel_heading")
         heading.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         panel_layout.addWidget(heading)
-        return panel
+        return panel, panel_layout
 
-    def _create_grade_score_table(self, layout):
+    def _create_grade_score_table(
+        self,
+        layout: QBoxLayout,
+    ) -> tuple[dict[str, QLineEdit], dict[str, QLineEdit]]:
         table = QGridLayout()
         table.setContentsMargins(0, 36, 0, 0)
         table.setHorizontalSpacing(12)
@@ -401,8 +428,8 @@ class PricingSettingsPage(QWidget):
             heading.setWordWrap(True)
             table.addWidget(heading, 0, column)
 
-        moisture_inputs = {}
-        pns_inputs = {}
+        moisture_inputs: dict[str, QLineEdit] = {}
+        pns_inputs: dict[str, QLineEdit] = {}
         for index, grade in enumerate(("A", "B", "C")):
             row = index + 1
             grade_badge = QLabel(grade)
@@ -445,7 +472,13 @@ class PricingSettingsPage(QWidget):
         return moisture_inputs, pns_inputs
 
     @staticmethod
-    def _create_numeric_input(object_name, minimum, maximum, decimals, placeholder):
+    def _create_numeric_input(
+        object_name: str,
+        minimum: float,
+        maximum: float,
+        decimals: int,
+        placeholder: str,
+    ) -> QLineEdit:
         numeric_input = QLineEdit()
         numeric_input.setObjectName(object_name)
         numeric_input.setPlaceholderText(placeholder)
@@ -461,7 +494,11 @@ class PricingSettingsPage(QWidget):
         return numeric_input
 
     @staticmethod
-    def _input_with_prefix_suffix(numeric_input, prefix, suffix):
+    def _input_with_prefix_suffix(
+        numeric_input: QLineEdit,
+        prefix: str,
+        suffix: str,
+    ) -> QFrame:
         container = QFrame()
         container.setObjectName("pricing_price_input_container")
         row = QHBoxLayout(container)
@@ -478,11 +515,11 @@ class PricingSettingsPage(QWidget):
 
     @staticmethod
     def _add_result_row(
-        layout,
-        title,
-        prominent=False,
-        initial_value="",
-    ):
+        layout: QBoxLayout,
+        title: str,
+        prominent: bool = False,
+        initial_value: str = "",
+    ) -> QLabel:
         if prominent:
             total_card = QFrame()
             total_card.setObjectName("pricing_total_card")
@@ -525,11 +562,11 @@ class PricingSettingsPage(QWidget):
         layout.addWidget(result_row)
         return value
 
-    def _update_effect_labels(self, moisture_percent):
+    def _update_effect_labels(self, moisture_percent: int) -> None:
         self.moisture_effect_label.setText(f"{moisture_percent}%")
         self.pns_effect_label.setText(f"{100 - moisture_percent}%")
 
-    def _update_calculation(self):
+    def _update_calculation(self) -> None:
         if self.permission_check is not None and not self.permission_check():
             return
 
@@ -546,6 +583,7 @@ class PricingSettingsPage(QWidget):
             or not 0 <= pns_score <= 100
         ):
             self._set_total_price_text("₱ —")
+            self._emit_pricing_summary()
             return
         valid_weight = (
             weight_kg is not None
@@ -560,6 +598,7 @@ class PricingSettingsPage(QWidget):
         )
         if result is None:
             self._set_total_price_text("₱ —")
+            self._emit_pricing_summary()
             return
 
         if not self.total_price_unlocked:
@@ -570,18 +609,30 @@ class PricingSettingsPage(QWidget):
             self._set_total_price_text("₱ —")
         else:
             self._set_total_price_text(f"₱ {result['total_price']:,.2f}")
+        self._emit_pricing_summary()
 
-    def _save_inputs(self):
+    def _emit_pricing_summary(self) -> None:
+        self.pricing_summary_updated.emit(
+            self.pns_score_input.text().strip(),
+            self.moisture_score_input.text().strip(),
+            self.total_price_result.text().strip(),
+        )
+
+    def _save_inputs(self) -> None:
         self.total_price_unlocked = True
         self._update_calculation()
 
-    def _inputs_changed(self):
+    def _inputs_changed(self) -> None:
         self._update_calculation()
 
-    def _grade_scores_changed(self):
+    def _grade_scores_changed(self) -> None:
         self._apply_grade_scores()
 
-    def set_grading_data(self, moisture_percent, bean_count):
+    def set_grading_data(
+        self,
+        moisture_percent: float | Decimal | str | None,
+        bean_count: object,
+    ) -> None:
         self.current_moisture_percent = moisture_percent
         self.current_moisture_grade = self._moisture_grade_from_percentage(
             moisture_percent
@@ -591,7 +642,9 @@ class PricingSettingsPage(QWidget):
         self._apply_grade_scores()
 
     @staticmethod
-    def _moisture_grade_from_percentage(moisture_percent):
+    def _moisture_grade_from_percentage(
+        moisture_percent: float | Decimal | str | None,
+    ) -> str:
         if moisture_percent is None:
             return ""
         try:
@@ -610,7 +663,10 @@ class PricingSettingsPage(QWidget):
         return "C"
 
     @staticmethod
-    def _configured_grade_score(grade_inputs, grade):
+    def _configured_grade_score(
+        grade_inputs: Mapping[str, QLineEdit],
+        grade: str,
+    ) -> str:
         if not grade:
             return ""
         score_input = grade_inputs[grade]
@@ -619,7 +675,7 @@ class PricingSettingsPage(QWidget):
             return ""
         return score_input.text().strip()
 
-    def _apply_grade_scores(self):
+    def _apply_grade_scores(self) -> None:
         self.moisture_score_input.setText(
             self._configured_grade_score(
                 self.moisture_grade_score_inputs,
@@ -634,7 +690,10 @@ class PricingSettingsPage(QWidget):
         )
         self._update_calculation()
 
-    def set_current_weight(self, weight_kg):
+    def set_current_weight(
+        self,
+        weight_kg: int | float | Decimal | str | None,
+    ) -> None:
         if weight_kg is None:
             self.weight_input.clear()
         else:
@@ -643,11 +702,11 @@ class PricingSettingsPage(QWidget):
 
     def set_pns_sample_data(
         self,
-        bean_count,
-        moldy_count,
-        slaty_count,
-        defected_count,
-    ):
+        bean_count: int | float | Decimal | str,
+        moldy_count: int | float | Decimal | str,
+        slaty_count: int | float | Decimal | str,
+        defected_count: int | float | Decimal | str,
+    ) -> None:
         """Display a completed 100g sample classified by the IR sensor and AI."""
         counts = (bean_count, moldy_count, slaty_count, defected_count)
         try:
@@ -672,7 +731,7 @@ class PricingSettingsPage(QWidget):
 
         self.set_grading_data(self.current_moisture_percent, int(total))
 
-    def update_calibration_prompt(self, message):
+    def update_calibration_prompt(self, message: str) -> None:
         normalized = message.casefold()
         relevant_prompts = (
             "load cell 1 calibration",
@@ -698,7 +757,7 @@ class PricingSettingsPage(QWidget):
             else "Continue calibration"
         )
 
-    def _request_calibration_continue(self):
+    def _request_calibration_continue(self) -> None:
         if not self.calibration_mass_input.isHidden():
             if self._calibration_cell != 1:
                 raise ValueError(
@@ -722,7 +781,7 @@ class PricingSettingsPage(QWidget):
         )
         self.calibration_continue_requested.emit()
 
-    def _set_total_price_text(self, text):
+    def _set_total_price_text(self, text: str) -> None:
         self.total_price_result.setText(text)
         state = (
             "status"
@@ -739,7 +798,7 @@ class PricingSettingsPage(QWidget):
             )
 
     @staticmethod
-    def _entered_value(numeric_input):
+    def _entered_value(numeric_input: QLineEdit) -> float | None:
         text = numeric_input.text().strip()
         if not text:
             return None
@@ -750,5 +809,5 @@ class PricingSettingsPage(QWidget):
         return value if value >= 0 else None
 
     @classmethod
-    def _score_value(cls, spin_box):
+    def _score_value(cls, spin_box: QLineEdit) -> float | None:
         return cls._entered_value(spin_box)

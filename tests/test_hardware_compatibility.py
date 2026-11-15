@@ -1,3 +1,7 @@
+# pyright: basic
+# pyright: reportAttributeAccessIssue=false, reportArgumentType=false
+# pyright: reportOptionalMemberAccess=false, reportOptionalSubscript=false
+
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -12,17 +16,23 @@ from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QBoxLayout,
+    QCheckBox,
     QDialog,
     QDoubleSpinBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QScroller,
     QSizePolicy,
     QScrollArea,
+    QTableWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -35,9 +45,11 @@ from GUI.camera import CameraPage
 from GUI.dashboard import Dashboard
 from GUI.main_window import MainWindow
 from GUI.pricing import PricingSettingsPage
+from GUI.quality import pns_grade_from_weighted_count
 from GUI.results import ResultsPage
 from GUI.history import get_batch_by_id, get_batches
 from GUI.nir_classifier import FEATURE_NAMES, NIRClassifier
+from GUI.nir_analysis import NIRAnalysisPage
 from GUI.settings import SettingsPage
 from GUI.styles import APP_STYLE
 from NIR.as7265x import AS7265XReader, WAVELENGTHS
@@ -142,7 +154,7 @@ class FakeDashboard(QWidget):
         return {
             "bean_id": "0" * 12,
             "bean_count": self.total_bean_count,
-            "batch_weight_grams": None,
+            "cumulative_weight_grams": None,
             "moisture": None,
             "quality": "UNDEFINED",
         }
@@ -198,6 +210,44 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertTrue(
             all(title.font().pixelSize() == 42 for title in page_titles)
+        )
+        current_batch = window.bean_data_sheet_page
+        current_batch_widgets = (
+            current_batch.findChild(QLabel, "bean_sheet_description"),
+            current_batch.findChild(QLabel, "bean_sheet_summary_title"),
+            current_batch.total_beans_value,
+            current_batch.good_bean_count_title,
+            current_batch.good_bean_count_value,
+            current_batch.bad_bean_count_title,
+            current_batch.actual_pns_score_value,
+            current_batch.actual_moisture_score_value,
+            current_batch.actual_total_price_value,
+            current_batch.view_summary_button,
+            current_batch.apply_filter_button,
+            current_batch.data_table,
+            current_batch.data_table.horizontalHeader(),
+            current_batch.findChild(QLabel, "bean_sheet_table_title"),
+        )
+        self.assertTrue(
+            all(
+                widget.font().pixelSize() in {25, 30, 35, 42}
+                for widget in current_batch_widgets
+            )
+        )
+        current_batch_text_widgets = (
+            *current_batch.findChildren(QLabel),
+            *current_batch.findChildren(QPushButton),
+            *current_batch.findChildren(QToolButton),
+            *current_batch.findChildren(QCheckBox),
+            *current_batch.findChildren(QRadioButton),
+            *current_batch.findChildren(QTableWidget),
+            *current_batch.findChildren(QHeaderView),
+        )
+        self.assertTrue(
+            all(
+                widget.font().pixelSize() in {25, 30, 35, 42}
+                for widget in current_batch_text_widgets
+            )
         )
         self.assertEqual(
             page_titles[0].mapTo(window, QPoint(0, 0)).y(),
@@ -569,7 +619,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(dashboard.total_bean_count, 2)
         self.assertEqual(dashboard.total_beans_value.text(), "2")
         self.assertEqual(
-            dashboard.current_seed_value.text(),
+            dashboard.current_bean_id,
             f"{date.today():%Y%m%d}0002",
         )
 
@@ -581,6 +631,14 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
         self.assertEqual(dashboard.total_beans_value.text(), "2")
+
+        dashboard.arduino_serial = None
+        dashboard.set_ir_sample_active(True)
+        dashboard._display_total_bean_count(1)
+        self.assertEqual(
+            dashboard.current_bean_id,
+            f"{date.today():%Y%m%d}0003",
+        )
 
     def test_ir_detection_event_updates_count_before_arduino_count_line(self):
         dashboard = Dashboard()
@@ -598,7 +656,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(dashboard.total_bean_count, 1)
         self.assertEqual(dashboard.total_beans_value.text(), "1")
         self.assertEqual(
-            dashboard.current_seed_value.text(),
+            dashboard.current_bean_id,
             f"{date.today():%Y%m%d}0001",
         )
 
@@ -1306,6 +1364,33 @@ class HardwareCompatibilityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "18 measurements"):
             classifier.predict([[0.5] * 17 for _ in range(3)])
 
+    def test_nir_spectral_heading_and_bean_id_are_on_same_row(self):
+        page = NIRAnalysisPage()
+        self.addCleanup(page.close)
+        page.resize(1100, 900)
+        page.show()
+        self.application.processEvents()
+
+        spectral_title = next(
+            label
+            for label in page.findChildren(QLabel)
+            if label.text() == "Spectral Response"
+        )
+        bean_id_box = page.findChild(
+            QWidget,
+            "nir_spectrum_bean_id_box",
+        )
+        title_center_y = spectral_title.mapTo(
+            page,
+            QPoint(0, spectral_title.height() // 2),
+        ).y()
+        bean_id_center_y = bean_id_box.mapTo(
+            page,
+            QPoint(0, bean_id_box.height() // 2),
+        ).y()
+
+        self.assertLessEqual(abs(title_center_y - bean_id_center_y), 1)
+
     def test_nir_model_result_gates_camera_good_sort_and_updates_totals(self):
         class FakeClassifier:
             @staticmethod
@@ -1313,7 +1398,16 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 return SimpleNamespace(label="moldy", confidence=0.9)
 
         dashboard = Dashboard()
+        bean_data_page = BeanDataSheetPage()
+        dashboard.bean_data_updated.connect(
+            bean_data_page.update_dashboard_metrics
+        )
         dashboard.nir_classifier = FakeClassifier()
+        dashboard.total_bean_count = 1
+        dashboard.bean_id_sequence = 1
+        dashboard.update_current_seed_id(1)
+        dashboard.quality_value.setText("GOOD")
+        dashboard.last_quality_confidence = 0.8
         dashboard.current_bean_camera_quality = "GOOD"
         dashboard.good_bean_count = 1
         commands = []
@@ -1342,6 +1436,32 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(commands, [b"NIR_CLASS_NOT_GOOD\n"])
         self.assertEqual(dashboard.good_bean_count, 0)
         self.assertEqual(dashboard.not_good_bean_count, 1)
+        current_bean_id = dashboard.current_bean_id
+        current_record = bean_data_page.bean_records[
+            (bean_data_page.batch_number, current_bean_id)
+        ]
+        expected_spectrum = [
+            float(index + 1)
+            for index in range(len(WAVELENGTHS))
+        ]
+        self.assertEqual(
+            current_record["nir_spectra"],
+            [expected_spectrum] * 3,
+        )
+        self.assertEqual(current_record["nir_classification"], "MOLDY")
+        self.assertEqual(current_record["nir_confidence"], 0.9)
+        self.assertEqual(bean_data_page.data_table.item(0, 3).text(), "MOLDY")
+        self.assertEqual(bean_data_page.data_table.item(0, 4).text(), "90.0%")
+
+        dashboard.ir_batch_active = True
+        self.assertTrue(dashboard.update_total_bean_count("BEAN_COUNT: 2"))
+        next_record = bean_data_page.bean_records[
+            (bean_data_page.batch_number, dashboard.current_bean_id)
+        ]
+        self.assertEqual(next_record["nir_spectra"], [])
+        self.assertIsNone(next_record["nir_classification"])
+        self.assertEqual(next_record["quality"], "UNDEFINED")
+        bean_data_page.deleteLater()
         dashboard.close()
 
     def test_admin_nir_analysis_displays_and_plots_firmware_scan_values(self):
@@ -2148,51 +2268,182 @@ class HardwareCompatibilityTests(unittest.TestCase):
 
     def test_bean_data_current_summary_values_start_blank(self):
         page = BeanDataSheetPage()
-        expected_titles = {
-            "Batch Number",
-            "Total Weight",
-            "PNS Grade",
-            "Average PNS Score",
-            "Moisture Classification",
-            "Average Moisture Score",
-        }
-        current_values = {}
-        for card in page.findChildren(QWidget, "bean_sheet_summary_card"):
-            labels = card.findChildren(QLabel)
-            title = next(
-                label.text()
-                for label in labels
-                if label.objectName()
-                in {
-                    "bean_sheet_summary_title",
-                    "bean_sheet_current_label",
-                }
-            )
-            value = next(
-                label.text()
-                for label in labels
-                if label.objectName()
-                in {
-                    "bean_sheet_summary_value",
-                    "bean_sheet_current_value",
-                }
-            )
-            if title in expected_titles:
-                current_values[title] = value
         self.assertEqual(
-            current_values,
-            {
-                "Batch Number": "",
-                "Total Weight": "",
-                "PNS Grade": "",
-                "Average PNS Score": "",
-                "Moisture Classification": "",
-                "Average Moisture Score": "",
-            },
+            (
+                page.batch_number_value.text(),
+                page.total_weight_value.text(),
+                page.pns_grade_value.text(),
+                page.total_beans_value.text(),
+                page.average_moisture_content_value.text(),
+                page.moisture_classification_value.text(),
+                page.good_bean_count_value.text(),
+                page.bad_bean_count_value.text(),
+            ),
+            ("", "", "", "", "", "", "", ""),
+        )
+        self.assertEqual(
+            (
+                page.actual_pns_score_value.text(),
+                page.actual_moisture_score_value.text(),
+                page.actual_total_price_value.text(),
+            ),
+            ("", "", ""),
         )
         self.assertFalse(page.empty_state.isVisible())
-        self.assertEqual(page.empty_state.text(), "")
+        self.assertEqual(
+            page.empty_state.text(),
+            "No beans recorded for this batch yet.",
+        )
         page.deleteLater()
+
+    def test_bean_data_displays_all_available_current_batch_values(self):
+        page = BeanDataSheetPage()
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "bean-1",
+                "bean_count": 1,
+                "batch_number": 1,
+                "batch_weight_grams": 50.0,
+                "moisture": 6.5,
+                "quality": "GOOD",
+            }
+        )
+        page.update_pricing_summary("90", "85", "₱ 100.00")
+
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "50.00 g")
+        self.assertEqual(page.pns_grade_value.text(), "A")
+        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(page.average_moisture_content_value.text(), "6.50%")
+        self.assertEqual(page.moisture_classification_value.text(), "Ideal")
+        self.assertEqual(page.good_bean_count_value.text(), "1")
+        self.assertEqual(page.bad_bean_count_value.text(), "0")
+        self.assertEqual(page.actual_pns_score_value.text(), "90")
+        self.assertEqual(page.actual_moisture_score_value.text(), "85")
+        self.assertEqual(page.actual_total_price_value.text(), "₱ 100.00")
+        page.deleteLater()
+
+    def test_bean_data_summary_sensor_views_and_pricing_panel(self):
+        page = BeanDataSheetPage()
+        page.show()
+        self.application.processEvents()
+        page.resize(700, 500)
+        self.application.processEvents()
+        self.assertEqual(
+            page.summary_content_layout.direction(),
+            QBoxLayout.Direction.TopToBottom,
+        )
+
+        page.resize(900, 500)
+        self.application.processEvents()
+        self.assertEqual(
+            page.summary_content_layout.direction(),
+            QBoxLayout.Direction.LeftToRight,
+        )
+        page.view_sensor_button.click()
+        self.assertEqual(page.summary_stack.currentIndex(), 1)
+        page.view_summary_button.click()
+        self.assertEqual(page.summary_stack.currentIndex(), 0)
+
+        page.update_pricing_summary("85", "90", "₱ 1,250.00")
+        self.assertEqual(
+            page.actual_pns_score_label.text(),
+            "Philippine National Standard:",
+        )
+        self.assertEqual(
+            page.actual_moisture_score_label.text(),
+            "Moisture Content",
+        )
+        self.assertEqual(page.actual_total_price_label.text(), "Total Price")
+        self.assertEqual(page.actual_pns_score_value.text(), "85")
+        self.assertEqual(page.actual_moisture_score_value.text(), "90")
+        self.assertEqual(page.actual_total_price_value.text(), "₱ 1,250.00")
+        score_panel = page.findChild(QFrame, "bean_sheet_score_panel")
+        score_layout = score_panel.layout()
+        self.assertEqual(
+            [score_layout.stretch(index) for index in range(4)],
+            [1, 1, 1, 1],
+        )
+        self.assertEqual(page.good_bean_count_title.text(), "No. of Good Beans")
+        self.assertEqual(page.bad_bean_count_title.text(), "No. of Bad Beans")
+        self.assertEqual(page.beans_title.text(), "Beans")
+        self.assertEqual(page.total_beans_title.text(), "")
+        self.assertEqual(page.beans_title.parentWidget().layout().spacing(), 8)
+        self.application.processEvents()
+        self.assertLess(
+            page.beans_title.y(),
+            page.good_bean_count_title.y(),
+        )
+        self.assertLess(
+            page.beans_title.y(),
+            page.bad_bean_count_title.y(),
+        )
+        self.assertLess(
+            page.good_bean_count_title.y(),
+            page.good_bean_count_value.y(),
+        )
+        self.assertLess(
+            page.good_bean_count_title.y(),
+            page.total_beans_value.y(),
+        )
+        self.assertLess(
+            page.bad_bean_count_title.y(),
+            page.bad_bean_count_value.y(),
+        )
+        self.assertLess(
+            page.bad_bean_count_title.y(),
+            page.total_beans_value.y(),
+        )
+        page.update_pricing_summary("", "", "₱ —")
+        self.assertEqual(page.actual_pns_score_value.text(), "")
+        self.assertEqual(page.actual_moisture_score_value.text(), "")
+        self.assertEqual(page.actual_total_price_value.text(), "")
+
+        page.show_table("Moisture Content Sample")
+        self.assertTrue(page.grouped_table_header.isHidden())
+        self.assertFalse(page.data_table.horizontalHeader().isHidden())
+        page.show_table("All Bean")
+        self.assertFalse(page.grouped_table_header.isHidden())
+        self.assertTrue(page.data_table.horizontalHeader().isHidden())
+        self.assertEqual(
+            page.grouped_table_header.layout().verticalSpacing(),
+            20,
+        )
+        page.deleteLater()
+
+    def test_main_window_syncs_pricing_summary_to_current_batch(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window.resize(1024, 600)
+        window.change_page(1)
+        window.show()
+        self.application.processEvents()
+        expected_direction = (
+            QBoxLayout.Direction.LeftToRight
+            if window.bean_data_sheet_page.width() >= 860
+            else QBoxLayout.Direction.TopToBottom
+        )
+        self.assertEqual(
+            window.bean_data_sheet_page.summary_content_layout.direction(),
+            expected_direction,
+        )
+        window.pricing_page.pricing_summary_updated.emit(
+            "85",
+            "90",
+            "₱ 1,250.00",
+        )
+        self.assertEqual(
+            window.bean_data_sheet_page.actual_pns_score_value.text(),
+            "85",
+        )
+        self.assertEqual(
+            window.bean_data_sheet_page.actual_moisture_score_value.text(),
+            "90",
+        )
+        self.assertEqual(
+            window.bean_data_sheet_page.actual_total_price_value.text(),
+            "₱ 1,250.00",
+        )
 
     def test_bean_data_missing_values_remain_blank(self):
         page = BeanDataSheetPage()
@@ -2202,33 +2453,32 @@ class HardwareCompatibilityTests(unittest.TestCase):
             {
                 "bean_id": "202610260001",
                 "bean_count": 1,
-                "batch_weight_grams": None,
+                "cumulative_weight_grams": None,
                 "moisture": None,
                 "quality": "GOOD",
                 "confidence": None,
             }
         )
 
-        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.batch_number_value.text(), "0000")
         self.assertEqual(page.total_weight_value.text(), "")
-        self.assertEqual(page.average_pns_score_value.text(), "100.00")
+        self.assertEqual(page.total_beans_value.text(), "1")
         self.assertEqual(page.moisture_classification_value.text(), "")
-        self.assertEqual(page.average_moisture_score_value.text(), "")
+        self.assertEqual(page.average_moisture_content_value.text(), "")
         self.assertEqual(page.data_table.item(0, 2).text(), "")
         self.assertEqual(history_rows[0][2], "")
 
         page.show_table("Moisture Content Sample")
-        self.assertEqual(page.data_table.item(0, 1).text(), "")
-        self.assertEqual(page.data_table.item(0, 2).text(), "")
-        self.assertEqual(page.data_table.item(0, 3).text(), "")
+        self.assertEqual(page.data_table.rowCount(), 0)
         page.deleteLater()
 
-    def test_bean_data_displays_average_pns_and_moisture_scores(self):
+    def test_bean_data_displays_total_beans_and_moisture_scores(self):
         page = BeanDataSheetPage()
         page.update_dashboard_metrics(
             {
                 "bean_id": "bean-1",
                 "bean_count": 100,
+                "cumulative_weight_grams": 50.0,
                 "moisture": 6.0,
                 "moisture_score": 80,
                 "quality": "GOOD",
@@ -2238,15 +2488,90 @@ class HardwareCompatibilityTests(unittest.TestCase):
             {
                 "bean_id": "bean-2",
                 "bean_count": 101,
+                "cumulative_weight_grams": 51.0,
                 "moisture": 8.0,
                 "moisture_score": 60,
                 "quality": "GOOD",
             }
         )
 
-        self.assertEqual(page.average_pns_score_value.text(), "97.50")
-        self.assertEqual(page.average_moisture_score_value.text(), "70.00")
+        self.assertEqual(page.total_beans_value.text(), "2")
+        self.assertEqual(page.average_moisture_content_value.text(), "7.00%")
         page.deleteLater()
+
+    def test_bean_data_average_and_quality_counts_match_moisture_table(self):
+        page = BeanDataSheetPage()
+        self.assertEqual(page.bad_bean_count_value.text(), "")
+        self.assertEqual(page.good_bean_count_value.text(), "")
+
+        samples = (
+            ("good-low", 5.0, "GOOD"),
+            ("good-high", 9.0, "GOOD"),
+            ("bad-moldy", 1.0, "MOLDY"),
+            ("bad-slaty", 1.0, "SLATY"),
+            ("bad-germinated", 1.0, "GERMINATED"),
+            ("bad-insect", 1.0, "Insect Damaged"),
+            ("bad-double", 1.0, "DOUBLE"),
+            ("bad-flat", 1.0, "FLAT"),
+            ("bad-broken", 1.0, "BROKEN"),
+        )
+        for bean_id, moisture, quality in samples:
+            page.update_dashboard_metrics(
+                {
+                    "bean_id": bean_id,
+                    "bean_count": len(page.bean_records) + 1,
+                    "moisture": moisture,
+                    "quality": quality,
+                }
+            )
+
+        self.assertEqual(page.total_beans_value.text(), "9")
+        self.assertEqual(page.average_moisture_content_value.text(), "7.00%")
+        self.assertEqual(page.bad_bean_count_value.text(), "7")
+        self.assertEqual(page.good_bean_count_value.text(), "2")
+
+        page.show_table("Moisture Content Sample")
+        self.assertEqual(page.data_table.rowCount(), 2)
+        self.assertEqual(page.data_table.item(0, 1).text(), "5.00")
+        self.assertEqual(page.data_table.item(1, 1).text(), "9.00")
+        page.deleteLater()
+
+    def test_moisture_classification_uses_passed_average_thresholds(self):
+        for moisture, expected in (
+            (5.99, "Brittle"),
+            (6.0, "Ideal"),
+            (7.5, "Ideal"),
+            (7.51, "Excessive"),
+        ):
+            with self.subTest(moisture=moisture):
+                page = BeanDataSheetPage()
+                page.update_dashboard_metrics(
+                    {
+                        "bean_id": "bad-bean",
+                        "bean_count": 1,
+                        "moisture": 99.0,
+                        "quality": "MOLDY",
+                    }
+                )
+                page.update_dashboard_metrics(
+                    {
+                        "bean_id": "good-bean",
+                        "bean_count": 2,
+                        "moisture": moisture,
+                        "moisture_classification": "ignored",
+                        "quality": "GOOD",
+                    }
+                )
+
+                self.assertEqual(
+                    page.average_moisture_content_value.text(),
+                    f"{moisture:.2f}%",
+                )
+                self.assertEqual(
+                    page.moisture_classification_value.text(),
+                    expected,
+                )
+                page.deleteLater()
 
     def test_bean_data_tables_update_from_dashboard_metrics(self):
         page = BeanDataSheetPage()
@@ -2256,107 +2581,504 @@ class HardwareCompatibilityTests(unittest.TestCase):
             {
                 "bean_id": "202610260001",
                 "bean_count": 1,
-                "batch_weight_grams": 125.5,
+                "cumulative_weight_grams": 100.0,
                 "moisture": None,
                 "quality": "GOOD",
                 "confidence": 0.84,
             }
         )
-        self.assertEqual(page.batch_number_value.text(), "0001")
-        self.assertEqual(page.total_weight_value.text(), "125.50 g")
+        self.assertEqual(page.batch_number_value.text(), "0000")
+        self.assertEqual(page.total_weight_value.text(), "100.00 g")
 
         table = page.data_table
         self.assertEqual(table.rowCount(), 1)
         self.assertEqual(table.item(0, 0).text(), "202610260001")
+        self.assertEqual(
+            table.item(0, 0).textAlignment(),
+            Qt.AlignmentFlag.AlignCenter,
+        )
+        self.assertEqual(
+            table.horizontalHeader().defaultAlignment(),
+            Qt.AlignmentFlag.AlignCenter,
+        )
+        self.assertTrue(table.showGrid())
         self.assertEqual(table.item(0, 1).text(), "GOOD")
         self.assertEqual(table.item(0, 2).text(), "84.0%")
-        self.assertEqual(table.columnCount(), 3)
+        self.assertEqual(table.columnCount(), 5)
+        self.assertEqual(table.item(0, 3).text(), "")
+        self.assertEqual(table.item(0, 4).text(), "")
         self.assertNotIn("PNS Grade Sample", page.table_tabs)
         self.assertEqual(page.pns_grade_value.text(), "A")
-        self.assertEqual(history_rows[0][0], "0001")
+        self.assertEqual(history_rows[0][0], "0000")
         self.assertEqual(history_rows[0][3], "1A")
 
         page.update_dashboard_metrics(
             {
                 "bean_id": "202610260002",
                 "bean_count": 2,
-                "batch_weight_grams": 251.0,
+                "cumulative_weight_grams": 101.0,
                 "moisture": None,
                 "quality": "MOLDY",
                 "confidence": 0.55,
             }
         )
-        self.assertEqual(page.data_table.rowCount(), 2)
-        self.assertEqual(page.data_table.item(1, 0).text(), "202610260002")
-        self.assertEqual(page.data_table.item(1, 1).text(), "MOLDY")
-        self.assertEqual(page.data_table.item(1, 2).text(), "55.0%")
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "1.00 g")
+        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(page.data_table.rowCount(), 1)
+        self.assertEqual(page.data_table.item(0, 0).text(), "202610260002")
+        self.assertEqual(page.data_table.item(0, 1).text(), "MOLDY")
+        self.assertEqual(page.data_table.item(0, 2).text(), "55.0%")
         self.assertEqual(page.pns_grade_value.text(), "A")
-        self.assertEqual(history_rows[-1][3], "Substandard")
 
         page.update_dashboard_metrics(
             {
-                "bean_id": "202610260003",
+                "bean_id": "202610260002",
                 "bean_count": 3,
-                "batch_weight_grams": 376.5,
+                "cumulative_weight_grams": 200.0,
                 "moisture": None,
                 "quality": "INSECT-DAMAGED",
                 "confidence": 0.73,
             }
         )
-        self.assertEqual(page.data_table.item(2, 1).text(), "INSECT-DAMAGED")
-        self.assertEqual(page.data_table.item(2, 2).text(), "73.0%")
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "100.00 g")
+        self.assertEqual(page.data_table.rowCount(), 1)
+        self.assertEqual(page.data_table.item(0, 1).text(), "INSECT-DAMAGED")
+        self.assertEqual(page.data_table.item(0, 2).text(), "73.0%")
+
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "202610260003",
+                "bean_count": 3,
+                "cumulative_weight_grams": 201.0,
+                "moisture": None,
+                "quality": "GOOD",
+                "confidence": 0.91,
+            }
+        )
+        self.assertEqual(page.batch_number_value.text(), "0002")
+        self.assertEqual(page.total_weight_value.text(), "1.00 g")
+        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(page.data_table.rowCount(), 1)
+        self.assertEqual(page.data_table.item(0, 0).text(), "202610260003")
+        self.assertEqual(history_rows[-1][0], "0002")
+
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "202610260004",
+                "bean_count": 4,
+                "cumulative_weight_grams": 500.0,
+                "quality": "GOOD",
+                "confidence": 0.91,
+            }
+        )
+        self.assertEqual(page.batch_number_value.text(), "0004")
+        self.assertEqual(page.total_weight_value.text(), "100.00 g")
+        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(page.data_table.item(0, 0).text(), "202610260004")
+        self.assertEqual(history_rows[-1][0], "0004")
 
         page.update_dashboard_metrics(
             {
                 "bean_id": "0" * 12,
                 "bean_count": 0,
-                "batch_weight_grams": None,
+                "cumulative_weight_grams": None,
                 "moisture": None,
                 "quality": "UNDEFINED",
             }
         )
-        self.assertEqual(page.batch_number_value.text(), "")
-        self.assertEqual(page.data_table.rowCount(), 0)
+        self.assertEqual(page.batch_number_value.text(), "0004")
+        self.assertEqual(page.total_weight_value.text(), "100.00 g")
+        self.assertEqual(page.data_table.rowCount(), 1)
 
         page.show_table("Moisture Content Sample")
         self.assertEqual(page.data_table.rowCount(), 0)
         page.deleteLater()
 
-    def test_current_batch_pns_grade_uses_bean_count_ranges(self):
+    def test_load_cell_weight_pauses_and_start_resumes_next_batch(self):
+        dashboard = Dashboard()
+        self.assertEqual(dashboard.batch_status_value.text(), "")
         page = BeanDataSheetPage()
-        for bean_count, expected_grade in (
-            (0, ""),
-            (1, "A"),
-            (100, "A"),
-            (101, "B"),
-            (110, "B"),
-            (111, "C"),
-            (120, "C"),
-            (121, ""),
+        dashboard.bean_data_updated.connect(page.update_dashboard_metrics)
+        dashboard.arduino_port = "COM-test"
+        dashboard.arduino_initialization_complete = True
+        commands = []
+        raw_weight_readings = []
+        dashboard.weight_readings_changed.connect(raw_weight_readings.append)
+        dashboard.write_arduino_command = (
+            lambda command: commands.append(command) or True
+        )
+        camera_stops = []
+        dashboard.start_camera = lambda: None
+        dashboard.stop_camera = lambda: camera_stops.append(True)
+        dashboard.arduino_serial = SimpleNamespace(
+            is_open=True,
+            in_waiting=0,
+            read=lambda _size: b"",
+            write=lambda _command: None,
+            close=lambda: None,
+        )
+
+        def send_serial_lines(lines: bytes) -> None:
+            dashboard.arduino_serial.in_waiting = len(lines)
+            dashboard.arduino_serial.read = lambda _size: lines
+            dashboard.read_arduino_messages(
+                SimpleNamespace(device="COM-test")
+            )
+
+        dashboard.start_system()
+        send_serial_lines(
+            b"BEAN_COUNT: 1\n"
+            b"Load Cell 1: 99.00 g\n"
+        )
+        self.assertEqual(page.batch_number_value.text(), "0000")
+        self.assertEqual(page.total_weight_value.text(), "99.00 g")
+        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(dashboard.batch_weight_value.text(), "99.00")
+        self.assertEqual(raw_weight_readings[-1], 99.0)
+
+        send_serial_lines(
+            b"BEAN_COUNT: 2\n"
+            b"Load Cell 1: 100.00 g\n"
+        )
+        self.assertEqual(page.batch_number_value.text(), "0000")
+        self.assertEqual(page.total_weight_value.text(), "100.00 g")
+        self.assertEqual(page.total_beans_value.text(), "2")
+        self.assertEqual(dashboard.batch_weight_value.text(), "100.00")
+        self.assertEqual(raw_weight_readings[-1], 100.0)
+        self.assertFalse(dashboard.system_running)
+        self.assertFalse(dashboard.ir_batch_active)
+        self.assertTrue(dashboard.batch_pause_pending)
+        self.assertTrue(dashboard.start_system_button.isEnabled())
+        self.assertFalse(dashboard.stop_system_button.isEnabled())
+        self.assertEqual(camera_stops, [True])
+        self.assertIn("STOP_SAMPLE\n", commands)
+        self.assertIn("paused", dashboard.batch_status_value.text())
+
+        dashboard.start_system()
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "0.00 g")
+        self.assertTrue(dashboard.system_running)
+        self.assertFalse(dashboard.batch_pause_pending)
+
+        send_serial_lines(
+            b"BEAN_COUNT: 1\n"
+            b"Load Cell 1: 101.00 g\n"
+        )
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "1.00 g")
+        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(dashboard.batch_weight_value.text(), "1.00")
+        self.assertEqual(raw_weight_readings[-1], 101.0)
+        self.assertEqual(page.data_table.rowCount(), 1)
+        self.assertEqual(
+            page.data_table.item(0, 0).text(),
+            dashboard.current_bean_id,
+        )
+
+        send_serial_lines(
+            b"BEAN_COUNT: 2\n"
+            b"Load Cell 1: 200.00 g\n"
+        )
+        self.assertEqual(page.total_weight_value.text(), "100.00 g")
+        self.assertTrue(dashboard.batch_pause_pending)
+
+        dashboard.start_system()
+        self.assertEqual(page.batch_number_value.text(), "0002")
+        send_serial_lines(
+            b"BEAN_COUNT: 1\n"
+            b"Load Cell 1: 1.00 g\n"
+        )
+        self.assertEqual(page.total_weight_value.text(), "1.00 g")
+        self.assertEqual(page.total_beans_value.text(), "1")
+
+        page.deleteLater()
+        dashboard.close()
+
+    def test_bean_data_quality_dropdowns_filter_rows(self):
+        page = BeanDataSheetPage()
+        for index, quality in enumerate(
+            ("GOOD", "MOLDY", "SLATY", "GERMINATED"),
+            start=1,
         ):
+            page.update_dashboard_metrics(
+                {
+                    "bean_id": f"bean-{index}",
+                    "bean_count": index,
+                    "quality": quality,
+                }
+            )
+
+        apply_filter = page.findChild(
+            QToolButton,
+            "bean_sheet_apply_filter_button",
+        )
+        if apply_filter is None:
+            self.fail("The Apply Filter dropdown should be present.")
+        self.assertEqual(apply_filter.text(), "Apply Filter:  ▾")
+        filter_menu = apply_filter.menu()
+        if filter_menu is None:
+            self.fail("The Apply Filter dropdown should have a menu.")
+        filter_panel = page.findChild(
+            QFrame,
+            "bean_sheet_quality_filter_panel",
+        )
+        external_group = page.findChild(
+            QFrame,
+            "bean_sheet_external_filter_group",
+        )
+        internal_group = page.findChild(
+            QFrame,
+            "bean_sheet_internal_filter_group",
+        )
+        external_radio = page.findChild(
+            QRadioButton,
+            "bean_sheet_external_filter_radio",
+        )
+        internal_radio = page.findChild(
+            QRadioButton,
+            "bean_sheet_internal_filter_radio",
+        )
+        if (
+            filter_panel is None
+            or external_group is None
+            or internal_group is None
+            or external_radio is None
+            or internal_radio is None
+        ):
+            self.fail("The filter menu should show both quality groups.")
+        self.assertTrue(external_radio.isChecked())
+        self.assertFalse(internal_radio.isChecked())
+        external_checkboxes = external_group.findChildren(
+            QCheckBox,
+            "bean_sheet_quality_filter_checkbox",
+        )
+        internal_checkboxes = internal_group.findChildren(
+            QCheckBox,
+            "bean_sheet_quality_filter_checkbox",
+        )
+        self.assertEqual(
+            [checkbox.text() for checkbox in internal_checkboxes],
+            ["Good", "Moldy", "Slaty"],
+        )
+        self.assertEqual(
+            [checkbox.text() for checkbox in external_checkboxes],
+            [
+                "Good",
+                "Germinated",
+                "Insect Damaged",
+                "Double",
+                "Moldy",
+                "Flat",
+                "Broken",
+            ],
+        )
+        filter_container = page.findChild(
+            QWidget,
+            "bean_sheet_quality_filter_container",
+        )
+        table_panel = page.data_table.parentWidget()
+        if filter_container is None or table_panel is None:
+            self.fail("The filter controls should be above the data table.")
+        table_layout = table_panel.layout()
+        if table_layout is None:
+            self.fail("The data table should have a panel layout.")
+        self.assertLess(
+            table_layout.indexOf(filter_container),
+            table_layout.indexOf(page.data_table),
+        )
+        self.assertEqual(page.data_table.rowCount(), 4)
+        page.show()
+        filter_menu.popup(page.mapToGlobal(QPoint(0, 0)))
+        QApplication.processEvents()
+        self.assertTrue(filter_menu.isVisible())
+
+        internal_checkboxes[2].click()
+        QApplication.processEvents()
+        self.assertTrue(filter_menu.isVisible())
+        self.assertEqual(page.data_table.rowCount(), 1)
+        self.assertEqual(page.data_table.item(0, 1).text(), "SLATY")
+        internal_checkboxes[2].click()
+        QApplication.processEvents()
+        self.assertTrue(filter_menu.isVisible())
+
+        internal_checkboxes[1].click()
+        self.assertEqual(page.data_table.rowCount(), 1)
+        self.assertEqual(page.data_table.item(0, 1).text(), "MOLDY")
+
+        external_checkboxes[1].click()
+        self.assertEqual(page.data_table.rowCount(), 2)
+        self.assertEqual(
+            {
+                page.data_table.item(row, 1).text()
+                for row in range(page.data_table.rowCount())
+            },
+            {"MOLDY", "GERMINATED"},
+        )
+
+        internal_checkboxes[1].click()
+        self.assertEqual(page.data_table.rowCount(), 1)
+        self.assertEqual(page.data_table.item(0, 1).text(), "GERMINATED")
+
+        external_checkboxes[1].click()
+        self.assertEqual(page.data_table.rowCount(), 4)
+        page.show_table("Moisture Content Sample")
+        self.assertTrue(filter_container.isHidden())
+        page.show_table("All Bean")
+        self.assertFalse(filter_container.isHidden())
+        filter_menu.close()
+        page.deleteLater()
+
+    def test_quality_filter_only_affects_current_all_bean_table(self):
+        page = BeanDataSheetPage()
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "previous-batch",
+                "bean_count": 1,
+                "cumulative_weight_grams": 100.0,
+                "quality": "MOLDY",
+                "moisture": 8.0,
+            }
+        )
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "batch-reset",
+                "bean_count": 0,
+                "quality": "UNDEFINED",
+            }
+        )
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "current-good",
+                "bean_count": 1,
+                "cumulative_weight_grams": 101.0,
+                "quality": "GOOD",
+                "moisture": 6.0,
+            }
+        )
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "current-moldy",
+                "bean_count": 2,
+                "cumulative_weight_grams": 102.0,
+                "quality": "MOLDY",
+                "moisture": 8.0,
+            }
+        )
+        internal_group = page.findChild(
+            QFrame,
+            "bean_sheet_internal_filter_group",
+        )
+        if internal_group is None:
+            self.fail("The internal quality filters should be available.")
+        moldy_filter = next(
+            checkbox
+            for checkbox in internal_group.findChildren(
+                QCheckBox,
+                "bean_sheet_quality_filter_checkbox",
+            )
+            if checkbox.text() == "Moldy"
+        )
+        moldy_filter.setChecked(True)
+
+        self.assertEqual(page.data_table.rowCount(), 1)
+        self.assertEqual(page.data_table.item(0, 0).text(), "current-moldy")
+
+        page.show_table("Moisture Content Sample")
+        self.assertEqual(page.data_table.rowCount(), 1)
+        self.assertEqual(page.data_table.item(0, 0).text(), "current-good")
+        page.deleteLater()
+
+    def test_quality_filter_message_does_not_leak_into_moisture_table(self):
+        page = BeanDataSheetPage()
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "current-moldy",
+                "bean_count": 1,
+                "quality": "MOLDY",
+                "moisture": 6.0,
+            }
+        )
+        internal_group = page.findChild(
+            QFrame,
+            "bean_sheet_internal_filter_group",
+        )
+        self.assertIsNotNone(internal_group)
+        moldy_filter = next(
+            checkbox
+            for checkbox in internal_group.findChildren(
+                QCheckBox,
+                "bean_sheet_quality_filter_checkbox",
+            )
+            if checkbox.text() == "Moldy"
+        )
+        moldy_filter.setChecked(True)
+        self.assertEqual(page.data_table.rowCount(), 1)
+
+        page.show_table("Moisture Content Sample")
+        self.assertEqual(page.data_table.rowCount(), 0)
+        self.assertEqual(
+            page.empty_state.text(),
+            "No good beans with moisture data yet.",
+        )
+        page.deleteLater()
+
+    def test_current_batch_pns_grade_uses_count_to_weight_ratio(self):
+        page = BeanDataSheetPage()
+        self.assertEqual(page.pns_grade_value.text(), "")
+        expected_grades = {
+            100: "A",
+            101: "B",
+            120: "B",
+            121: "C",
+        }
+        for bean_count in range(1, 122):
             page.update_dashboard_metrics(
                 {
                     "bean_id": f"bean-{bean_count}",
                     "bean_count": bean_count,
+                    "batch_number": 0,
+                    "batch_weight_grams": 100.0,
                     "quality": "MOLDY",
                 }
             )
-            self.assertEqual(page.pns_grade_value.text(), expected_grade)
+            if bean_count in expected_grades:
+                self.assertEqual(
+                    page.pns_grade_value.text(),
+                    expected_grades[bean_count],
+                )
         page.deleteLater()
+
+    def test_pns_grade_rejects_invalid_count_or_weight(self):
+        for count, weight in (
+            (-1, 100),
+            (1, 0),
+            (1, -1),
+            (None, 100),
+            (1, None),
+        ):
+            with self.subTest(count=count, weight=weight):
+                self.assertEqual(
+                    pns_grade_from_weighted_count(count, weight),
+                    "",
+                )
 
     def test_quality_counts_include_supported_defect_categories(self):
         records = [
             {"quality": "BROKEN"},
             {"quality": "GERMINATED"},
             {"quality": "DOUBLE"},
+            {"quality": "MOLDY"},
+            {"quality": "SLATY"},
         ]
 
         self.assertEqual(
             BeanDataSheetPage._quality_counts(records),
             {
                 "GOOD": 0,
-                "MOLDY": 0,
-                "SLATY": 0,
+                "MOLDY": 1,
+                "SLATY": 1,
                 "DEFECTIVE": 3,
             },
         )
@@ -2937,7 +3659,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(window.pages.currentIndex(), 2)
         self.assertEqual(
             window.bean_data_sheet_page.data_table.columnCount(),
-            3,
+            5,
         )
         self.assertEqual(
             [
@@ -2950,6 +3672,8 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "Bean Number",
                 "Condition",
                 "Confidence",
+                "NIR Classification",
+                "NIR Confidence",
             ],
         )
         header = window.bean_data_sheet_page.data_table.horizontalHeader()

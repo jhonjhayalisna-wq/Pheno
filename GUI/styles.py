@@ -228,6 +228,49 @@ QMainWindow#admin_control_panel,
     font-weight: 700;
 }
 
+#bean_sheet_score_panel {
+    background-color: #e3f3e6;
+    border: 1px solid #a8d5b5;
+    border-radius: 12px;
+}
+
+#bean_sheet_score_title,
+#bean_sheet_price_title {
+    color: #234b33;
+    font-weight: 700;
+}
+
+#bean_sheet_score_label,
+#bean_sheet_score_value,
+#bean_sheet_price_value,
+#bean_sheet_count_title,
+#bean_sheet_count_value {
+    color: #173f2a;
+    font-weight: 700;
+}
+
+#bean_sheet_sensor_empty_state {
+    color: #718077;
+    font-size: 18px;
+}
+
+#bean_sheet_grouped_table_header {
+    background-color: #dff2e2;
+    border: 1px solid #cbded0;
+}
+
+#bean_sheet_group_header,
+#bean_sheet_column_header {
+    border-bottom: 1px solid #cbded0;
+    border-right: 1px solid #cbded0;
+    color: #234b33;
+    font-weight: 700;
+}
+
+#bean_sheet_count_divider {
+    color: #cbded0;
+}
+
 #bean_sheet_table_title {
     color: #294d37;
     font-size: 15px;
@@ -245,6 +288,81 @@ QPushButton#bean_sheet_tab {
     min-height: 34px;
     padding: 6px 12px;
     text-align: center;
+}
+
+QToolButton#bean_sheet_apply_filter_button {
+    background-color: #ffffff;
+    border: 1px solid #cad9ce;
+    border-radius: 10px;
+    color: #294d37;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 14px;
+    text-align: left;
+}
+
+QToolButton#bean_sheet_apply_filter_button:hover {
+    background-color: #e1eee4;
+    border-color: #a8cbb1;
+}
+
+QToolButton#bean_sheet_apply_filter_button:pressed {
+    background-color: #d7eadb;
+}
+
+QToolButton#bean_sheet_apply_filter_button::menu-indicator {
+    image: none;
+}
+
+QMenu#bean_sheet_quality_filter_menu {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+}
+
+QFrame#bean_sheet_quality_filter_panel {
+    background-color: #ffffff;
+    border: 1px solid #dce5df;
+    border-radius: 14px;
+}
+
+QFrame#bean_sheet_filter_group_header {
+    background-color: #e3f3e6;
+    border: 1px solid #a8d5b5;
+    border-radius: 10px;
+}
+
+QLabel#bean_sheet_filter_group_title {
+    color: #1f5c38;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+QCheckBox#bean_sheet_quality_filter_checkbox {
+    color: #303238;
+    font-size: 14px;
+    spacing: 10px;
+    padding: 5px 8px;
+}
+
+QCheckBox#bean_sheet_quality_filter_checkbox:hover {
+    background-color: #f0f7f1;
+    border-radius: 6px;
+}
+
+QCheckBox#bean_sheet_quality_filter_checkbox::indicator {
+    width: 18px;
+    height: 18px;
+}
+
+QFrame#bean_sheet_filter_divider {
+    color: #d9d9d4;
+}
+
+QRadioButton#bean_sheet_external_filter_radio,
+QRadioButton#bean_sheet_internal_filter_radio {
+    min-width: 20px;
+    min-height: 20px;
 }
 
 QPushButton#bean_sheet_tab:hover {
@@ -279,6 +397,10 @@ QTableWidget#batch_history_table QHeaderView::section {
     font-size: 12px;
     font-weight: 700;
     padding: 9px 7px;
+}
+
+QTableWidget#bean_data_table QHeaderView::section {
+    border-right: 1px solid #cbded0;
 }
 
 QFrame#nir_reading_card,
@@ -1684,8 +1806,14 @@ APP_STYLE += """
     font-size: 35px;
 }
 
-#central_widget #right_side #dashboard QLabel#dashboard_subtitle,
-#central_widget #right_side #bean_data_sheet_page QLabel#bean_sheet_description,
+#central_widget #right_side #dashboard QLabel#dashboard_subtitle {
+    font-size: 22px;
+}
+
+#central_widget #right_side #bean_data_sheet_page QLabel#bean_sheet_description {
+    font-size: 25px;
+}
+
 #central_widget #right_side #batch_history_page QLabel#settings_description,
 #central_widget #right_side #pricing_settings_page QLabel#settings_description,
 #central_widget #right_side #pricing_settings_page QLabel#pricing_note,
@@ -1713,6 +1841,8 @@ APP_STYLE += """
 #central_widget #right_side #bean_data_sheet_page
     QPushButton#bean_sheet_tab,
 #central_widget #right_side #bean_data_sheet_page
+    QToolButton#bean_sheet_apply_filter_button,
+#central_widget #right_side #bean_data_sheet_page
     QTableWidget#bean_data_table QHeaderView,
 #central_widget #right_side #bean_data_sheet_page
     QTableWidget#bean_data_table QHeaderView::section {
@@ -1727,6 +1857,33 @@ APP_STYLE += """
 #central_widget #right_side #bean_data_sheet_page
     QLabel#bean_sheet_summary_value {
     font-size: 30px;
+}
+
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_score_title,
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_score_value,
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_price_value,
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_count_value {
+    font-size: 30px;
+}
+
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_score_label,
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_price_title,
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_count_title {
+    font-size: 25px;
+}
+
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_group_header,
+#central_widget #right_side #bean_data_sheet_page
+    QLabel#bean_sheet_column_header {
+    font-size: 25px;
 }
 
 #central_widget #right_side #bean_data_sheet_page
