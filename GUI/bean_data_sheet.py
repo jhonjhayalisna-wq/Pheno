@@ -85,9 +85,9 @@ class BeanDataSheetPage(QWidget):
             ("Batch Number", "batch_number_value", ""),
             ("Total Weight", "total_weight_value", ""),
             ("PNS Grade", "pns_grade_value", ""),
-            ("AVG Moisture Content Percentage", "avg_moisture_value", ""),
+            ("Average PNS Score", "average_pns_score_value", ""),
             ("Moisture Classification", "moisture_classification_value", ""),
-            ("Total Moisture Score", "total_moisture_score_value", ""),
+            ("Average Moisture Score", "average_moisture_score_value", ""),
         )
         for index, (title, attribute, default) in enumerate(summary_values):
             card = self._create_summary_card(title, default)
@@ -266,6 +266,18 @@ class BeanDataSheetPage(QWidget):
         self.pns_grade_value.setText(
             pns_grade_from_bean_count(bean_count)
         )
+        current_batch_id = f"{self.batch_number:04d}"
+        pns_scores = [
+            float(row[8])
+            for row in history_rows
+            if row[0] == current_batch_id
+            and isinstance(row[8], (int, float))
+        ]
+        self.average_pns_score_value.setText(
+            ""
+            if not pns_scores
+            else f"{sum(pns_scores) / len(pns_scores):.2f}"
+        )
         moisture_values = [
             float(record["moisture"])
             for record in current_records
@@ -280,9 +292,6 @@ class BeanDataSheetPage(QWidget):
         average_moisture = None
         if moisture_values:
             average_moisture = sum(moisture_values) / len(moisture_values)
-            self.avg_moisture_value.setText(f"{average_moisture:.2f}%")
-        else:
-            self.avg_moisture_value.setText("")
         passed_average_moisture = None
         if passed_moisture_values:
             passed_average_moisture = (
@@ -294,9 +303,15 @@ class BeanDataSheetPage(QWidget):
         self.moisture_classification_value.setText(
             str(self.batch_snapshot.get("moisture_classification") or "")
         )
-        moisture_score = self.batch_snapshot.get("moisture_score")
-        self.total_moisture_score_value.setText(
-            "" if moisture_score is None else str(moisture_score)
+        moisture_scores = [
+            float(record["moisture_score"])
+            for record in current_records
+            if isinstance(record.get("moisture_score"), (int, float))
+        ]
+        self.average_moisture_score_value.setText(
+            ""
+            if not moisture_scores
+            else f"{sum(moisture_scores) / len(moisture_scores):.2f}"
         )
         self.grading_data_updated.emit(passed_average_moisture, bean_count)
         self.batch_history_updated.emit(history_rows)

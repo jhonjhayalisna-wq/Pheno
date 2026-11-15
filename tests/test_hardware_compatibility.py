@@ -1659,7 +1659,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(bean_page.avg_moisture_value.text(), "6.00%")
+        self.assertEqual(bean_page.current_average_moisture, 6.0)
         self.assertEqual(bean_page.current_passed_average_moisture, 7.0)
         self.assertEqual(pricing_page.current_moisture_grade, "A")
         self.assertEqual(pricing_page.moisture_score_input.text(), "100")
@@ -2152,9 +2152,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
             "Batch Number",
             "Total Weight",
             "PNS Grade",
-            "AVG Moisture Content Percentage",
+            "Average PNS Score",
             "Moisture Classification",
-            "Total Moisture Score",
+            "Average Moisture Score",
         }
         current_values = {}
         for card in page.findChildren(QWidget, "bean_sheet_summary_card"):
@@ -2185,9 +2185,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "Batch Number": "",
                 "Total Weight": "",
                 "PNS Grade": "",
-                "AVG Moisture Content Percentage": "",
+                "Average PNS Score": "",
                 "Moisture Classification": "",
-                "Total Moisture Score": "",
+                "Average Moisture Score": "",
             },
         )
         self.assertFalse(page.empty_state.isVisible())
@@ -2211,9 +2211,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
 
         self.assertEqual(page.batch_number_value.text(), "0001")
         self.assertEqual(page.total_weight_value.text(), "")
-        self.assertEqual(page.avg_moisture_value.text(), "")
+        self.assertEqual(page.average_pns_score_value.text(), "100.00")
         self.assertEqual(page.moisture_classification_value.text(), "")
-        self.assertEqual(page.total_moisture_score_value.text(), "")
+        self.assertEqual(page.average_moisture_score_value.text(), "")
         self.assertEqual(page.data_table.item(0, 2).text(), "")
         self.assertEqual(history_rows[0][2], "")
 
@@ -2221,6 +2221,31 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.data_table.item(0, 1).text(), "")
         self.assertEqual(page.data_table.item(0, 2).text(), "")
         self.assertEqual(page.data_table.item(0, 3).text(), "")
+        page.deleteLater()
+
+    def test_bean_data_displays_average_pns_and_moisture_scores(self):
+        page = BeanDataSheetPage()
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "bean-1",
+                "bean_count": 100,
+                "moisture": 6.0,
+                "moisture_score": 80,
+                "quality": "GOOD",
+            }
+        )
+        page.update_dashboard_metrics(
+            {
+                "bean_id": "bean-2",
+                "bean_count": 101,
+                "moisture": 8.0,
+                "moisture_score": 60,
+                "quality": "GOOD",
+            }
+        )
+
+        self.assertEqual(page.average_pns_score_value.text(), "97.50")
+        self.assertEqual(page.average_moisture_score_value.text(), "70.00")
         page.deleteLater()
 
     def test_bean_data_tables_update_from_dashboard_metrics(self):
