@@ -2759,7 +2759,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.data_table.rowCount(), 0)
         page.deleteLater()
 
-    def test_load_cell_weight_pauses_and_start_resumes_next_batch(self):
+    def test_load_cell_weight_above_100g_does_not_stop_system(self):
         dashboard = Dashboard()
         self.assertEqual(dashboard.batch_status_value.text(), "")
         page = BeanDataSheetPage()
@@ -2810,51 +2810,29 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.total_beans_value.text(), "2")
         self.assertEqual(dashboard.batch_weight_value.text(), "100.00")
         self.assertEqual(raw_weight_readings[-1], 100.0)
-        self.assertFalse(dashboard.system_running)
-        self.assertFalse(dashboard.ir_batch_active)
-        self.assertTrue(dashboard.batch_pause_pending)
-        self.assertTrue(dashboard.start_system_button.isEnabled())
-        self.assertFalse(dashboard.stop_system_button.isEnabled())
-        self.assertEqual(camera_stops, [True])
-        self.assertIn("STOP_SAMPLE\n", commands)
-        self.assertIn("paused", dashboard.batch_status_value.text())
-
-        dashboard.start_system()
-        self.assertEqual(page.batch_number_value.text(), "0001")
-        self.assertEqual(page.total_weight_value.text(), "0.00 g")
         self.assertTrue(dashboard.system_running)
-        self.assertFalse(dashboard.batch_pause_pending)
+        self.assertTrue(dashboard.ir_batch_active)
+        self.assertFalse(dashboard.start_system_button.isEnabled())
+        self.assertTrue(dashboard.stop_system_button.isEnabled())
+        self.assertEqual(camera_stops, [])
+        self.assertNotIn("STOP_SAMPLE\n", commands)
+        self.assertIn("Processing", dashboard.batch_status_value.text())
 
         send_serial_lines(
-            b"BEAN_COUNT: 1\n"
-            b"Load Cell 1: 101.00 g\n"
-        )
-        self.assertEqual(page.batch_number_value.text(), "0001")
-        self.assertEqual(page.total_weight_value.text(), "1.00 g")
-        self.assertEqual(page.total_beans_value.text(), "1")
-        self.assertEqual(dashboard.batch_weight_value.text(), "1.00")
-        self.assertEqual(raw_weight_readings[-1], 101.0)
-        self.assertEqual(page.data_table.rowCount(), 1)
-        self.assertEqual(
-            page.data_table.item(0, 0).text(),
-            dashboard.current_bean_id,
-        )
-
-        send_serial_lines(
-            b"BEAN_COUNT: 2\n"
+            b"BEAN_COUNT: 3\n"
             b"Load Cell 1: 200.00 g\n"
         )
-        self.assertEqual(page.total_weight_value.text(), "100.00 g")
-        self.assertTrue(dashboard.batch_pause_pending)
+        self.assertEqual(page.total_weight_value.text(), "200.00 g")
+        self.assertEqual(page.total_beans_value.text(), "3")
+        self.assertTrue(dashboard.system_running)
+        self.assertTrue(dashboard.ir_batch_active)
+        self.assertNotIn("STOP_SAMPLE\n", commands)
 
-        dashboard.start_system()
-        self.assertEqual(page.batch_number_value.text(), "0002")
-        send_serial_lines(
-            b"BEAN_COUNT: 1\n"
-            b"Load Cell 1: 1.00 g\n"
-        )
-        self.assertEqual(page.total_weight_value.text(), "1.00 g")
-        self.assertEqual(page.total_beans_value.text(), "1")
+        dashboard.stop_system()
+        self.assertFalse(dashboard.system_running)
+        self.assertFalse(dashboard.ir_batch_active)
+        self.assertEqual(camera_stops, [True])
+        self.assertIn("STOP_SAMPLE\n", commands)
 
         page.deleteLater()
         dashboard.close()

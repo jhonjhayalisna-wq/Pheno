@@ -148,7 +148,6 @@ class Dashboard(QWidget):
     servo_sweep_status_received = Signal(int, bool)
     bean_data_updated = Signal(object)
     EMEET_CAMERA_INDEX = 0
-    BATCH_LIMIT_GRAMS = 100.0
     GRAMS_PER_KILOGRAM = 1000.0
     ARDUINO_PROTOCOL_TIMEOUT_SECONDS = 5.0
     IR_SAMPLE_START_RETRY_SECONDS = 1.0
@@ -222,7 +221,6 @@ class Dashboard(QWidget):
         self.current_batch_number = 0
         self.current_batch_weight_grams = 0.0
         self.batch_weight_baseline_grams: float | None = None
-        self.batch_pause_pending = False
         self.system_running = False
         self.system_has_started = False
         self.total_bean_count = 0
@@ -532,7 +530,6 @@ class Dashboard(QWidget):
                         self._set_arduino_status(
                             f"Live load-cell reading: {weight_kg:.3f} kg"
                         )
-                        self._pause_at_batch_limit()
                     elif message.startswith(
                         (
                             "ERROR: HX711 not ready.",
@@ -629,17 +626,6 @@ class Dashboard(QWidget):
                 else 0.0
             )
             self.system_has_started = True
-        elif self.batch_pause_pending:
-            self.current_batch_number += 1
-            self.batch_pause_pending = False
-            self.current_batch_weight_grams = 0.0
-            self.batch_weight_baseline_grams = (
-                self.good_weight_grams
-                if self.good_weight_grams is not None
-                else 0.0
-            )
-            self.update_batch_weight_value(0.0)
-
         self.system_running = True
         self.set_ir_sample_active(True)
         self.start_camera()
@@ -674,26 +660,6 @@ class Dashboard(QWidget):
             0.0,
             cumulative_weight_grams - self.batch_weight_baseline_grams,
         )
-
-    def _pause_at_batch_limit(self) -> None:
-        if (
-            not self.ir_batch_active
-            or self.batch_pause_pending
-            or self.current_batch_weight_grams < self.BATCH_LIMIT_GRAMS
-        ):
-            return
-
-        self.batch_pause_pending = True
-        self.stop_system()
-        status = (
-            f"Batch {self.current_batch_number:04d} reached "
-            f"{self.current_batch_weight_grams:.2f} g; system paused. "
-            f"Press Start System for batch "
-            f"{self.current_batch_number + 1:04d}."
-        )
-        self._update_system_controls(status)
-        self._set_arduino_status(status)
-        self.system_log_received.emit(status)
 
     def initialize_nir_scanner(self) -> None:
         if (
