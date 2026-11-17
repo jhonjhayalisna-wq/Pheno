@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtCore import QPoint, QEventLoop, QSettings, QTimer, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -190,6 +190,24 @@ class HardwareCompatibilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.application = QApplication.instance() or QApplication([])
+        cls._settings_directory = tempfile.TemporaryDirectory()
+        cls._previous_settings_format = QSettings.defaultFormat()
+        QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+        QSettings.setPath(
+            QSettings.Format.IniFormat,
+            QSettings.Scope.UserScope,
+            cls._settings_directory.name,
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        QSettings.setDefaultFormat(cls._previous_settings_format)
+        cls._settings_directory.cleanup()
+
+    def setUp(self):
+        settings = QSettings("PhenoCoater", "PhenoCoater")
+        settings.remove("pricing/inputs")
+        settings.sync()
 
     def test_main_window_uses_requested_system_font_tiers(self):
         previous_style = self.application.styleSheet()
@@ -1657,65 +1675,95 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(str(result["price_per_kilo"]), "0.01")
         self.assertEqual(str(result["total_price"]), "0.01")
 
-    def test_pns_grading_matches_each_table_grade_and_substandard_limits(self):
+    def test_pns_grade_uses_weighted_ratio_without_unsupported_defect_score(self):
         cases = (
-            (100, 3, 3, 3, 100, "1A"),
-            (101, 3, 3, 3, 95, "1B"),
-            (111, 3, 3, 3, 90, "1C"),
-            (100, 4, 8, 6, 85, "2A"),
-            (101, 4, 8, 6, 80, "2B"),
-            (111, 4, 8, 6, 75, "2C"),
-            (121, 0, 0, 0, 60, "Substandard"),
-            (100, 4.01, 0, 0, 60, "Substandard"),
-            (100, 3, 8.01, 0, 60, "Substandard"),
-            (100, 3, 3, 6.01, 60, "Substandard"),
+            (100, 100, 3, 3, 3, "A"),
+            (101, 100, 3, 3, 3, "B"),
+            (111, 100, 3, 3, 3, "B"),
+            (121, 100, 0, 0, 0, "C"),
+            (100, 100, 4.01, 0, 0, "A"),
+            (100, 100, 3, 8.01, 0, "A"),
         )
-        for count, moldy, slaty, defected, score, grade in cases:
+        for count, weight, moldy, slaty, defected, grade in cases:
             with self.subTest(
                 count=count,
+                weight=weight,
                 moldy=moldy,
                 slaty=slaty,
                 defected=defected,
             ):
+                result = PricingSettingsPage.calculate_pns_grade(
+                    count,
+                    weight,
+                    moldy,
+                    slaty,
+                    defected,
+                )
                 self.assertEqual(
-                    PricingSettingsPage.calculate_pns_grade(
-                        count,
-                        moldy,
-                        slaty,
-                        defected,
-                    ),
-                    {"score": score, "grade": grade},
+                    result,
+                    {"score": None, "grade": grade},
+                )
+
+    def test_pns_weighted_ratio_exact_cases(self):
+        cases = (
+            (81, "80.80", "A"),
+            (118, 105, "B"),
+            (102, 84, "C"),
+            (86, "71.04", "C"),
+            (101, 100, "B"),
+            (120, 100, "B"),
+            (100, 100, "A"),
+            (121, 100, "C"),
+        )
+        for count, weight, expected in cases:
+            with self.subTest(count=count, weight=weight):
+                self.assertEqual(
+                    pns_grade_from_weighted_count(count, weight),
+                    expected,
                 )
 
     def test_pns_grading_requires_complete_and_valid_sample_values(self):
         self.assertIsNone(
-            PricingSettingsPage.calculate_pns_grade(100, None, 0, 0)
+            PricingSettingsPage.calculate_pns_grade(
+                100,
+                None,
+                0,
+                0,
+                0,
+            )
         )
         for values in (
-            (0, 0, 0, 0),
-            (100.5, 0, 0, 0),
-            (100, -0.1, 0, 0),
-            (100, 0, 0, 100.1),
+            (0, 0, 0, 0, 0),
+            (100.5, 100, 0, 0, 0),
+            (100, 100, -0.1, 0, 0),
+            (100, 100, 0, 0, 100.1),
+            (100, 0, 0, 0, 0),
+            (100, -1, 0, 0, 0),
         ):
             with self.subTest(values=values):
                 with self.assertRaises(ValueError):
                     PricingSettingsPage.calculate_pns_grade(*values)
 
-    def test_pricing_pns_score_is_calculated_from_sensor_and_ai_sample_data(self):
+    def test_pricing_pns_grade_uses_sample_weight_and_configured_score(self):
         page = PricingSettingsPage()
         self.assertTrue(page.pns_score_input.isReadOnly())
         self.assertEqual(page.pns_score_input.text(), "")
         self.assertEqual(page.pns_grade_label.text(), "")
         page.pns_grade_score_inputs["B"].setText("80")
 
-        page.set_pns_sample_data(105, 4, 5, 4)
+        page.set_pns_sample_data(105, 100, 4, 5, 4)
         self.assertEqual(page.pns_score_input.text(), "80")
         self.assertEqual(page.pns_grade_label.text(), "B")
         self.assertIsNone(
             page.findChild(QLineEdit, "pricing_pns_bean_count_input")
         )
         with self.assertRaises(ValueError):
-            page.set_pns_sample_data(100, 40, 40, 30)
+            page.set_pns_sample_data(100, 100, 40, 40, 30)
+
+        page.pns_grade_score_inputs["C"].setText("90")
+        page.set_pns_sample_data(102, 84, 4, 5, 4)
+        self.assertEqual(page.pns_grade_label.text(), "C")
+        self.assertEqual(page.pns_score_input.text(), "90")
         page.deleteLater()
 
     def test_grade_scores_are_user_entered_and_drive_pricing(self):
@@ -1770,22 +1818,23 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page.pns_grade_score_inputs["C"].setText("90")
         page.base_price_input.setText("200")
 
-        page.set_grading_data(7.5, 100)
+        page.set_grading_data(7.5, 100, 100)
         self.assertEqual(page.moisture_score_input.text(), "100")
         self.assertEqual(page.pns_score_input.text(), "100")
         page.set_current_weight(1)
         page.save_inputs_button.click()
         self.assertEqual(page.total_price_result.text(), "₱ 200.00")
 
-        page.set_grading_data(5.9, 105)
+        page.set_grading_data(5.9, 105, 100)
+        page.set_current_weight(1)
         self.assertEqual(page.moisture_score_input.text(), "95")
         self.assertEqual(page.pns_score_input.text(), "95")
         self.assertEqual(page.total_price_result.text(), "₱ 190.00")
 
-        page.set_grading_data(7.51, 121)
+        page.set_grading_data(7.51, 121, 100)
         self.assertEqual(page.moisture_score_input.text(), "90")
-        self.assertEqual(page.pns_score_input.text(), "")
-        self.assertEqual(page.total_price_result.text(), "₱ —")
+        self.assertEqual(page.pns_score_input.text(), "90")
+        self.assertEqual(page.total_price_result.text(), "₱ 18.00")
         page.deleteLater()
 
     def test_moisture_grade_uses_average_of_good_beans(self):
@@ -1888,8 +1937,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(pricing_page.pns_effect_label.text(), "65%")
         pricing_page.base_price_input.setText("200")
         pricing_page.moisture_grade_score_inputs["A"].setText("88")
-        pricing_page.set_grading_data(7.0, 115)
-        pricing_page.set_pns_sample_data(115, 0, 0, 0)
+        pricing_page.set_grading_data(7.0, 115, 100)
+        pricing_page.pns_grade_score_inputs["B"].setText("90")
+        pricing_page.set_pns_sample_data(115, 100, 0, 0, 0)
         self.assertEqual(pricing_page.pns_score_input.text(), "90")
         self.assertFalse(
             {
@@ -1917,9 +1967,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page = PricingSettingsPage()
         page.base_price_input.setText("200")
         page.moisture_grade_score_inputs["A"].setText("88")
-        page.set_grading_data(7.0, 115)
-        page.pns_grade_score_inputs["C"].setText("90")
-        page.set_pns_sample_data(115, 0, 0, 0)
+        page.set_grading_data(7.0, 115, 100)
+        page.pns_grade_score_inputs["B"].setText("90")
+        page.set_pns_sample_data(115, 100, 0, 0, 0)
         weight_kg = Dashboard.parse_load_cell_weight_kg(
             "Load Cell 1: 125.00 g"
         )
@@ -1942,13 +1992,138 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.total_price_result.text(), "₱ —")
         page.deleteLater()
 
+    def test_pricing_saved_inputs_toast_and_persistence(self):
+        settings = QSettings("PhenoCoater", "PhenoCoater")
+        window = QWidget()
+        window.resize(1100, 700)
+        page = PricingSettingsPage()
+        QVBoxLayout(window).addWidget(page)
+        window.show()
+        self.application.processEvents()
+
+        self.assertFalse(settings.contains("pricing/inputs/saved"))
+        self.assertEqual(page.save_inputs_button.text(), "Save inputs")
+        self.assertIsNone(page._save_toast)
+        self.assertFalse(page.base_price_input.isReadOnly())
+        self.assertTrue(page.moisture_effect_slider.isEnabled())
+
+        page.base_price_input.setText("250")
+        page.moisture_effect_slider.setValue(35)
+        for grade, score in (("A", "100"), ("B", "95"), ("C", "90")):
+            page.moisture_grade_score_inputs[grade].setText(score)
+            page.pns_grade_score_inputs[grade].setText(score)
+        self.assertEqual(page.save_inputs_button.text(), "Save inputs")
+
+        page.save_inputs_button.click()
+        self.application.processEvents()
+        self.assertEqual(page.save_inputs_button.text(), "Edit inputs")
+        self.assertTrue(page.save_inputs_button.isEnabled())
+        self.assertTrue(page.save_inputs_button.property("saved"))
+        self.assertTrue(page.base_price_input.isReadOnly())
+        self.assertTrue(page.moisture_grade_score_inputs["A"].isReadOnly())
+        self.assertTrue(page.pns_grade_score_inputs["C"].isReadOnly())
+        self.assertFalse(page.moisture_effect_slider.isEnabled())
+        self.assertTrue(settings.value("pricing/inputs/saved", False, type=bool))
+
+        toast = page._save_toast
+        self.assertIsNotNone(toast)
+        self.assertIs(toast.parentWidget(), window)
+        self.assertTrue(toast.isVisible())
+        self.assertTrue(
+            toast.testAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents
+            )
+        )
+        self.assertEqual(toast.focusPolicy(), Qt.FocusPolicy.NoFocus)
+        self.assertEqual(
+            page._save_toast_message_label.text(),
+            "Inputs saved",
+        )
+        self.assertEqual(page._save_toast_fade_in.duration(), 150)
+        self.assertEqual(page._save_toast_fade_out.duration(), 300)
+        self.assertEqual(
+            len(window.findChildren(QWidget, "pricing_inputs_saved_toast")),
+            1,
+        )
+        self.assertEqual(
+            toast.x(),
+            (window.width() - toast.width()) // 2,
+        )
+        self.assertEqual(
+            window.height() - (toast.y() + toast.height()),
+            24,
+        )
+
+        page.save_inputs_button.click()
+        self.assertEqual(page.save_inputs_button.text(), "Save inputs")
+        self.assertFalse(page.base_price_input.isReadOnly())
+        self.assertTrue(page.moisture_effect_slider.isEnabled())
+        self.assertEqual(page.base_price_input.text(), "250")
+        self.assertEqual(page.moisture_grade_score_inputs["B"].text(), "95")
+
+        page.save_inputs_button.click()
+        self.application.processEvents()
+        self.assertEqual(page.save_inputs_button.text(), "Edit inputs")
+        self.assertIs(page._save_toast, toast)
+        self.assertEqual(
+            len(window.findChildren(QWidget, "pricing_inputs_saved_toast")),
+            1,
+        )
+
+        event_loop = QEventLoop()
+        QTimer.singleShot(3500, event_loop.quit)
+        event_loop.exec()
+        self.assertFalse(toast.isVisible())
+
+        window.close()
+        restored_page = PricingSettingsPage()
+        self.assertEqual(restored_page.save_inputs_button.text(), "Save inputs")
+        self.assertEqual(restored_page.base_price_input.text(), "")
+        self.assertTrue(
+            all(
+                not field.text()
+                for field in (
+                    *restored_page.moisture_grade_score_inputs.values(),
+                    *restored_page.pns_grade_score_inputs.values(),
+                )
+            )
+        )
+        self.assertEqual(restored_page.moisture_effect_slider.value(), 50)
+        self.assertFalse(restored_page.base_price_input.isReadOnly())
+        self.assertTrue(restored_page.moisture_effect_slider.isEnabled())
+        self.assertIsNone(restored_page._save_toast)
+        self.assertTrue(settings.value("pricing/inputs/saved", False, type=bool))
+        self.assertEqual(
+            settings.value("pricing/inputs/base_price", type=str),
+            "250",
+        )
+        page.deleteLater()
+        restored_page.deleteLater()
+
+    def test_pricing_invalid_inputs_do_not_show_saved_toast(self):
+        settings = QSettings("PhenoCoater", "PhenoCoater")
+        page = PricingSettingsPage()
+        page.base_price_input.setText("250")
+        page.moisture_grade_score_inputs["A"].setText("invalid")
+        self.assertFalse(
+            page.moisture_grade_score_inputs["A"].hasAcceptableInput()
+        )
+
+        page.save_inputs_button.click()
+
+        self.assertEqual(page.save_inputs_button.text(), "Save inputs")
+        self.assertFalse(page.save_inputs_button.property("saved"))
+        self.assertIsNone(page._save_toast)
+        self.assertFalse(settings.contains("pricing/inputs/saved"))
+        page.deleteLater()
+
     def test_pricing_score_and_weight_fields_accept_typed_decimal_values(self):
         page = PricingSettingsPage()
         page.base_price_input.setText("200.75")
         page.moisture_grade_score_inputs["A"].setText("88.5")
-        page.set_grading_data(7.0, 115)
-        page.pns_grade_score_inputs["C"].setText("90")
-        page.set_pns_sample_data(115, 0, 0, 0)
+        page.set_grading_data(7.0, 115, 100)
+        page.pns_grade_score_inputs["B"].setText("90")
+        page.set_pns_sample_data(115, 100, 0, 0, 0)
         page.set_current_weight(2.5)
         self.assertEqual(page.base_price_input.text(), "200.75")
         self.assertEqual(page.base_price_input.validator().decimals(), 2)
@@ -2375,10 +2550,15 @@ class HardwareCompatibilityTests(unittest.TestCase):
             page.summary_content_layout.direction(),
             QBoxLayout.Direction.LeftToRight,
         )
+        table_panel = page.findChild(QFrame, "bean_sheet_table_panel")
+        self.assertIsNotNone(table_panel)
+        self.assertFalse(table_panel.isHidden())
         page.view_sensor_button.click()
         self.assertEqual(page.summary_stack.currentIndex(), 1)
+        self.assertTrue(table_panel.isHidden())
         page.view_summary_button.click()
         self.assertEqual(page.summary_stack.currentIndex(), 0)
+        self.assertFalse(table_panel.isHidden())
 
         page.update_pricing_summary("85", "90", "₱ 1,250.00")
         self.assertEqual(
@@ -2530,6 +2710,8 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.average_moisture_content_value.text(), "")
         self.assertEqual(page.data_table.item(0, 2).text(), "")
         self.assertEqual(history_rows[0][2], "")
+        self.assertEqual(history_rows[0][3], "")
+        self.assertEqual(history_rows[0][8], "")
 
         page.show_table("Moisture Content Sample")
         self.assertEqual(page.data_table.rowCount(), 0)
@@ -2673,7 +2855,8 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertNotIn("PNS Grade Sample", page.table_tabs)
         self.assertEqual(page.pns_grade_value.text(), "A")
         self.assertEqual(history_rows[0][0], "0000")
-        self.assertEqual(history_rows[0][3], "1A")
+        self.assertEqual(history_rows[0][3], "A")
+        self.assertEqual(history_rows[0][8], "Not specified")
 
         page.update_dashboard_metrics(
             {
@@ -2857,7 +3040,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         if apply_filter is None:
             self.fail("The Apply Filter dropdown should be present.")
-        self.assertEqual(apply_filter.text(), "Apply Filter:  ▾")
+        self.assertEqual(apply_filter.text(), "Apply Filter:")
         filter_menu = apply_filter.menu()
         if filter_menu is None:
             self.fail("The Apply Filter dropdown should have a menu.")
@@ -3091,13 +3274,36 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 )
         page.deleteLater()
 
+    def test_pns_history_grade_uses_measured_sample_weight(self):
+        page = BeanDataSheetPage()
+        page.bean_records = {
+            (0, str(index)): {
+                "bean_id": f"bean-{index}",
+                "batch_weight_grams": "84",
+                "quality": "GOOD",
+            }
+            for index in range(102)
+        }
+
+        row = page._pns_sample_rows()[0]
+        self.assertEqual(row[3], "C")
+        self.assertEqual(row[8], "Not specified")
+        page.deleteLater()
+
     def test_pns_grade_rejects_invalid_count_or_weight(self):
         for count, weight in (
             (-1, 100),
+            (1.5, 100),
             (1, 0),
             (1, -1),
             (None, 100),
             (1, None),
+            ("NaN", 100),
+            ("Infinity", 100),
+            ("-Infinity", 100),
+            (1, "NaN"),
+            (1, "Infinity"),
+            (1, "-Infinity"),
         ):
             with self.subTest(count=count, weight=weight):
                 self.assertEqual(

@@ -116,7 +116,8 @@ QPushButton {
     font-size: 14px;
     font-weight: 600;
     min-height: 46px;
-    padding: 12px 16px;
+    margin-right: 4px;
+    padding: 12px 0px 12px 8px;
     text-align: left;
 }
 
@@ -128,6 +129,7 @@ QPushButton {
     background-color: #2e704b;
     color: #ffffff;
     font-weight: 700;
+    margin-right: 4px;
 }
 
 #admin_button {
@@ -655,6 +657,10 @@ QLineEdit#pricing_grade_score_input {
     font-size: 18px;
     min-height: 20px;
     padding: 5px 6px;
+}
+
+QLineEdit#pricing_grade_score_input[pns_score_input="true"] {
+    padding-right: 30px;
 }
 
 QSlider#pricing_effect_slider::groove:horizontal {

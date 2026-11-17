@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
         sidebar = QWidget()
         sidebar.setObjectName('sidebar')
         self.sidebar = sidebar
-        sidebar.setFixedWidth(300)
+        sidebar.setFixedWidth(312)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(14, 14, 14, 12)
         sidebar_layout.setSpacing(5)
@@ -97,10 +97,10 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(logo_subtitle)
         sidebar_layout.addSpacing(12)
 
-        self.dashboard_button = self.create_menu_button('Dashboard')
-        self.current_batch_button = self.create_menu_button('Current Batch')
-        self.batch_history_button = self.create_menu_button('Batch History')
-        self.pricing_button = self.create_menu_button('Pricing Settings')
+        self.dashboard_button = self.create_menu_button('DASHBOARD')
+        self.current_batch_button = self.create_menu_button('CURRENT BATCH')
+        self.batch_history_button = self.create_menu_button('BATCH HISTORY')
+        self.pricing_button = self.create_menu_button('PRICING SETTINGS')
         self.menu_buttons = [
             self.dashboard_button,
             self.current_batch_button,
@@ -229,7 +229,6 @@ class MainWindow(QMainWindow):
         self.pricing_page.set_grading_data(
             self.bean_data_sheet_page.current_passed_average_moisture,
             self.bean_data_sheet_page.current_bean_count,
-            self.bean_data_sheet_page.pns_grade_value.text(),
             self.bean_data_sheet_page.current_batch_weight_grams,
         )
         self.dashboard_page.nir_message_received.connect(
@@ -264,7 +263,7 @@ class MainWindow(QMainWindow):
             return
         compact = self.width() < 1000
         narrow = self.width() < 720
-        self.sidebar.setFixedWidth(128 if narrow else 176 if compact else 300)
+        self.sidebar.setFixedWidth(128 if narrow else 176 if compact else 312)
         self.sidebar.setProperty('compact', compact)
         self.sidebar.style().unpolish(self.sidebar)
         self.sidebar.style().polish(self.sidebar)

@@ -2,22 +2,34 @@ from collections.abc import Callable, Mapping
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import TypedDict
 
-from PySide6.QtCore import QLocale, Qt, Signal
-from PySide6.QtGui import QDoubleValidator, QShowEvent
+from PySide6.QtCore import (
+    QEvent,
+    QEasingCurve,
+    QLocale,
+    QPropertyAnimation,
+    QObject,
+    QSettings,
+    QTimer,
+    Qt,
+    Signal,
+)
+from PySide6.QtGui import QDoubleValidator, QPainter, QPen, QPixmap, QShowEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
+    QDoubleSpinBox,
     QFrame,
+    QGraphicsOpacityEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QDoubleSpinBox,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSlider,
     QVBoxLayout,
     QWidget,
 )
-from .quality import pns_grade_from_bean_count
+from .quality import pns_grade_from_weighted_count
 
 
 class PriceCalculationResult(TypedDict):
@@ -29,7 +41,7 @@ class PriceCalculationResult(TypedDict):
 
 
 class PNSGradeResult(TypedDict):
-    score: int
+    score: int | None
     grade: str
 
 
@@ -50,12 +62,27 @@ class PricingSettingsPage(QWidget):
         self.current_moisture_grade: str = ""
         self.current_pns_grade: str = ""
         self._calibration_cell: int | None = None
+        self._save_toast: QWidget | None = None
+        self._save_toast_parent: QWidget | None = None
+        self._save_toast_message_label: QLabel | None = None
+        self._save_toast_opacity: QGraphicsOpacityEffect | None = None
+        self._save_toast_fade_in: QPropertyAnimation | None = None
+        self._save_toast_fade_out: QPropertyAnimation | None = None
+        self._save_toast_timer: QTimer | None = None
         self._setup_ui()
         self._update_calculation()
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self._align_total_card_height()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if (
+            watched is self._save_toast_parent
+            and event.type() == QEvent.Type.Resize
+        ):
+            self._position_save_toast()
+        return super().eventFilter(watched, event)
 
     def _align_total_card_height(self) -> None:
         total_card = self.total_price_result.parentWidget()
@@ -137,12 +164,14 @@ class PricingSettingsPage(QWidget):
     @staticmethod
     def calculate_pns_grade(
         bean_count: int | float | Decimal | str | None,
+        sample_weight_grams: int | float | Decimal | str | None,
         moldy_percent: int | float | Decimal | str | None,
         slaty_percent: int | float | Decimal | str | None,
         defected_percent: int | float | Decimal | str | None,
     ) -> PNSGradeResult | None:
         values = (
             bean_count,
+            sample_weight_grams,
             moldy_percent,
             slaty_percent,
             defected_percent,
@@ -150,18 +179,19 @@ class PricingSettingsPage(QWidget):
         if any(value is None for value in values):
             return None
         try:
-            count = Decimal(str(bean_count))
-            moldy, slaty, defected = (
+            count, sample_weight, moldy, slaty, defected = (
                 Decimal(str(value))
-                for value in values[1:]
+                for value in values
             )
         except (InvalidOperation, TypeError, ValueError) as exc:
             raise ValueError("PNS sample values must be numeric.") from exc
 
         if (
             not count.is_finite()
-            or count <= 0
+            or count < 0
             or count != count.to_integral_value()
+            or not sample_weight.is_finite()
+            or sample_weight <= 0
             or any(
                 not value.is_finite() or not 0 <= value <= 100
                 for value in (moldy, slaty, defected)
@@ -169,26 +199,10 @@ class PricingSettingsPage(QWidget):
         ):
             raise ValueError("PNS sample values are outside their valid ranges.")
 
-        if count <= 100:
-            grade_index = 0
-        elif count <= 110:
-            grade_index = 1
-        elif count <= 120:
-            grade_index = 2
-        else:
-            return {"score": 60, "grade": "Substandard"}
-
-        if moldy <= 3 and slaty <= 3 and defected <= 3:
-            return {
-                "score": 100 - grade_index * 5,
-                "grade": ("1A", "1B", "1C")[grade_index],
-            }
-        if moldy <= 4 and slaty <= 8 and defected <= 6:
-            return {
-                "score": 85 - grade_index * 5,
-                "grade": ("2A", "2B", "2C")[grade_index],
-            }
-        return {"score": 60, "grade": "Substandard"}
+        return {
+            "score": None,
+            "grade": pns_grade_from_weighted_count(count, sample_weight),
+        }
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -196,22 +210,16 @@ class PricingSettingsPage(QWidget):
         layout.setSpacing(12)
 
         header = QVBoxLayout()
-        header.setSpacing(2)
-        title = QLabel("Pricing settings")
+        header.setSpacing(0)
+        title = QLabel("PRICING SETTINGS")
         title.setObjectName("page_title")
-        description = QLabel(
-            "Set the base price and grade scores. "
-            "The batch value is calculated from them."
-        )
-        description.setObjectName("settings_description")
         header.addWidget(title)
-        header.addWidget(description)
         layout.addLayout(header)
 
         panels = QHBoxLayout()
         panels.setSpacing(20)
         controls_panel, controls_layout = self._create_panel(
-            "Pricing controls"
+            "PRICING CONTROLS"
         )
         controls_layout.setSpacing(0)
         controls_layout.addStretch(1)
@@ -223,22 +231,22 @@ class PricingSettingsPage(QWidget):
             0,
             1_000_000_000,
             2,
-            "Enter base price",
+            "ENTER BASE PRICE",
         )
         self.base_price_input.setObjectName("pricing_base_price_input")
         self.base_price_input.textChanged.connect(self._inputs_changed)
-        base_form.addWidget(self._create_form_label("Base price per kilo"))
+        base_form.addWidget(self._create_form_label("BASE PRICE PER KILO"))
         base_form.addWidget(
             self._input_with_prefix_suffix(
                 self.base_price_input,
                 "₱",
-                "pesos/kg",
+                "PESOS/KG",
             )
         )
         controls_layout.addLayout(base_form)
-        controls_layout.addStretch(2)
+        controls_layout.addStretch(1)
 
-        effect_title = QLabel("Score effect")
+        effect_title = QLabel("SCORE EFFECT")
         effect_title.setObjectName("pricing_section_title")
 
         effect_section = QVBoxLayout()
@@ -250,11 +258,11 @@ class PricingSettingsPage(QWidget):
         effect_grid.setVerticalSpacing(12)
         effect_grid.setColumnStretch(0, 1)
         effect_grid.setColumnStretch(1, 1)
-        moisture_effect_name = QLabel("Moisture content")
+        moisture_effect_name = QLabel("MOISTURE CONTENT")
         moisture_effect_name.setObjectName("pricing_control_label")
         self.moisture_effect_label = QLabel("50%")
         self.moisture_effect_label.setObjectName("pricing_effect_value")
-        pns_effect_name = QLabel("PNS grade")
+        pns_effect_name = QLabel("PNS GRADE")
         pns_effect_name.setObjectName("pricing_control_label")
         self.pns_effect_label = QLabel("50%")
         self.pns_effect_label.setObjectName("pricing_effect_value")
@@ -295,9 +303,21 @@ class PricingSettingsPage(QWidget):
         self.save_inputs_button.clicked.connect(self._save_inputs)
         controls_layout.addWidget(self.save_inputs_button)
 
+        self.setStyleSheet(
+            """
+            QPushButton#pricing_save_inputs_button[saved="true"] {
+                background-color: #E3F3EA;
+                border: 1.5px solid #2E7D50;
+                border-radius: 7px;
+                color: #1F6B42;
+                font-weight: 700;
+            }
+            """
+        )
+
         panels.addWidget(controls_panel, 1)
 
-        result_panel, result_layout = self._create_panel("Grade Criteria")
+        result_panel, result_layout = self._create_panel("GRADE CRITERIA")
         (
             self.moisture_grade_score_inputs,
             self.pns_grade_score_inputs,
@@ -335,13 +355,10 @@ class PricingSettingsPage(QWidget):
         self.calibration_mass_input.setVisible(False)
         result_layout.addWidget(self.calibration_mass_input)
 
-        result_layout.addStretch()
-        self.total_price_result = self._add_result_row(
-            result_layout,
-            "Total batch value",
-            prominent=True,
-            initial_value="₱ —",
-        )
+        self.total_price_result = QLabel("₱ —")
+        self.total_price_result.setObjectName("pricing_total_result")
+        self.total_price_result.setVisible(False)
+        self.total_price_result.setProperty("result_state", "value")
         self.weight_input = self._create_numeric_input(
             "pricing_weight_input",
             0,
@@ -384,6 +401,7 @@ class PricingSettingsPage(QWidget):
         panels.addWidget(result_panel, 1)
         layout.addLayout(panels, 1)
         self._align_total_card_height()
+        self.set_save_state(False)
 
     @staticmethod
     def _create_form_label(text: str) -> QLabel:
@@ -410,11 +428,17 @@ class PricingSettingsPage(QWidget):
     ) -> tuple[dict[str, QLineEdit], dict[str, QLineEdit]]:
         table = QGridLayout()
         table.setContentsMargins(0, 36, 0, 0)
-        table.setHorizontalSpacing(12)
-        table.setVerticalSpacing(28)
-        for column in range(3):
-            table.setColumnStretch(column, 1)
-            table.setColumnMinimumWidth(column, 220)
+        table.setHorizontalSpacing(16)
+        table.setVerticalSpacing(48)
+
+        # GRADE column fits its badge; the two score columns fit the inputs.
+        # No column stretch, so the block keeps its natural width and the
+        # wrapper below can center it with equal left/right margins.
+        table.setColumnMinimumWidth(0, 130)
+        table.setColumnMinimumWidth(1, 220)
+        table.setColumnMinimumWidth(2, 220)
+        for row in range(1, 4):
+            table.setRowStretch(row, 1)
 
         headers = (
             ("GRADE", 0),
@@ -426,7 +450,12 @@ class PricingSettingsPage(QWidget):
             heading.setObjectName("pricing_grade_column_heading")
             heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
             heading.setWordWrap(True)
-            table.addWidget(heading, 0, column)
+            table.addWidget(
+                heading,
+                0,
+                column,
+                alignment=Qt.AlignmentFlag.AlignCenter,
+            )
 
         moisture_inputs: dict[str, QLineEdit] = {}
         pns_inputs: dict[str, QLineEdit] = {}
@@ -452,10 +481,13 @@ class PricingSettingsPage(QWidget):
                     0,
                     100,
                     2,
-                    "0 to 100",
+                    "0 TO 100",
                 )
+                if grade_inputs is pns_inputs:
+                    score_input.setProperty("pns_score_input", "true")
                 score_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 score_input.setFixedWidth(220)
+                score_input.setFixedHeight(52)
                 score_input.setAccessibleName(
                     f"{title} score assigned to grade {grade}"
                 )
@@ -468,7 +500,14 @@ class PricingSettingsPage(QWidget):
                 )
                 grade_inputs[grade] = score_input
 
-        layout.addLayout(table)
+        # Center the whole table block inside the GRADE CRITERIA panel.
+        centered_table = QHBoxLayout()
+        centered_table.addStretch(1)
+        centered_table.addLayout(table)
+        centered_table.addStretch(1)
+
+        layout.addLayout(centered_table, 1)
+        layout.addStretch(1)
         return moisture_inputs, pns_inputs
 
     @staticmethod
@@ -619,8 +658,249 @@ class PricingSettingsPage(QWidget):
         )
 
     def _save_inputs(self) -> None:
+        if self.save_inputs_button.property("saved"):
+            self.set_save_state(False)
+            return
+        if not self._save_inputs_are_valid():
+            self._update_calculation()
+            return
+
         self.total_price_unlocked = True
         self._update_calculation()
+        settings = QSettings("PhenoCoater", "PhenoCoater")
+        settings.setValue("pricing/inputs/saved", True)
+        settings.setValue(
+            "pricing/inputs/base_price",
+            self.base_price_input.text(),
+        )
+        settings.setValue(
+            "pricing/inputs/moisture_effect",
+            self.moisture_effect_slider.value(),
+        )
+        for grade in ("A", "B", "C"):
+            settings.setValue(
+                f"pricing/inputs/moisture_score_{grade}",
+                self.moisture_grade_score_inputs[grade].text(),
+            )
+            settings.setValue(
+                f"pricing/inputs/pns_score_{grade}",
+                self.pns_grade_score_inputs[grade].text(),
+            )
+        settings.sync()
+        if settings.status() != QSettings.Status.NoError:
+            QMessageBox.critical(
+                self,
+                "Unable to save inputs",
+                "Pricing inputs could not be saved. Please try again.",
+            )
+            return
+        self.set_save_state(True)
+        self.show_toast("Inputs saved")
+
+    def set_save_state(self, saved: bool) -> None:
+        self.save_inputs_button.setText(
+            "Edit inputs" if saved else "Save inputs"
+        )
+        self.save_inputs_button.setProperty("saved", saved)
+        self.save_inputs_button.style().unpolish(self.save_inputs_button)
+        self.save_inputs_button.style().polish(self.save_inputs_button)
+        self.save_inputs_button.update()
+
+        self.base_price_input.setReadOnly(saved)
+        for grade in ("A", "B", "C"):
+            self.moisture_grade_score_inputs[grade].setReadOnly(saved)
+            self.pns_grade_score_inputs[grade].setReadOnly(saved)
+        self.moisture_effect_slider.setEnabled(not saved)
+
+    def _save_inputs_are_valid(self) -> bool:
+        if (
+            not self.base_price_input.text().strip()
+            or not self.base_price_input.hasAcceptableInput()
+        ):
+            return False
+        return all(
+            not field.text() or field.hasAcceptableInput()
+            for field in (
+                *self.moisture_grade_score_inputs.values(),
+                *self.pns_grade_score_inputs.values(),
+            )
+        )
+
+    def _load_saved_inputs(self) -> None:
+        settings = QSettings("PhenoCoater", "PhenoCoater")
+        if not settings.value("pricing/inputs/saved", False, type=bool):
+            return
+
+        self.base_price_input.setText(
+            str(settings.value("pricing/inputs/base_price", "", type=str))
+        )
+        for grade in ("A", "B", "C"):
+            self.moisture_grade_score_inputs[grade].setText(
+                str(
+                    settings.value(
+                        f"pricing/inputs/moisture_score_{grade}",
+                        "",
+                        type=str,
+                    )
+                )
+            )
+            self.pns_grade_score_inputs[grade].setText(
+                str(
+                    settings.value(
+                        f"pricing/inputs/pns_score_{grade}",
+                        "",
+                        type=str,
+                    )
+                )
+            )
+        moisture_effect = settings.value(
+            "pricing/inputs/moisture_effect",
+            50,
+            type=int,
+        )
+        if not isinstance(moisture_effect, int):
+            raise TypeError("Saved pricing score effect must be an integer.")
+        self.moisture_effect_slider.setValue(moisture_effect)
+        self.total_price_unlocked = True
+        self.set_save_state(True)
+
+    def show_toast(self, message: str) -> None:
+        if self._save_toast is None:
+            self._create_save_toast()
+        if (
+            self._save_toast is None
+            or self._save_toast_opacity is None
+            or self._save_toast_fade_in is None
+            or self._save_toast_fade_out is None
+            or self._save_toast_timer is None
+            or self._save_toast_message_label is None
+        ):
+            raise RuntimeError("The pricing save toast was not initialized.")
+
+        self._save_toast_message_label.setText(message)
+        self._save_toast_timer.stop()
+        self._save_toast_fade_in.stop()
+        self._save_toast_fade_out.stop()
+        self._save_toast_opacity.setOpacity(0.0)
+        self._position_save_toast()
+        self._save_toast.show()
+        self._save_toast.raise_()
+        self._save_toast_fade_in.start()
+
+    def _create_save_toast(self) -> None:
+        parent = self.window()
+        self._save_toast_parent = parent
+        parent.installEventFilter(self)
+
+        toast = QWidget(parent)
+        toast.setObjectName("pricing_inputs_saved_toast")
+        toast.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
+        toast.setAttribute(
+            Qt.WidgetAttribute.WA_ShowWithoutActivating,
+            True,
+        )
+        toast.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        toast.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        toast.setStyleSheet(
+            """
+            QWidget#pricing_inputs_saved_toast {
+                background-color: #2E7D50;
+                border-radius: 10px;
+            }
+            QLabel#pricing_inputs_saved_toast_message {
+                background: transparent;
+                color: #FFFFFF;
+                font-size: 16px;
+                font-weight: 700;
+            }
+            """
+        )
+
+        toast_layout = QHBoxLayout(toast)
+        toast_layout.setContentsMargins(20, 12, 20, 12)
+        toast_layout.setSpacing(10)
+
+        check_icon = QPixmap(20, 20)
+        check_icon.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(check_icon)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(Qt.GlobalColor.white, 2.5)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.drawLine(4, 10, 8, 14)
+        painter.drawLine(8, 14, 16, 5)
+        painter.end()
+
+        icon_label = QLabel()
+        icon_label.setPixmap(check_icon)
+        icon_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
+        toast_layout.addWidget(icon_label)
+
+        message_label = QLabel()
+        message_label.setObjectName("pricing_inputs_saved_toast_message")
+        message_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
+        toast_layout.addWidget(message_label)
+
+        opacity = QGraphicsOpacityEffect(toast)
+        opacity.setOpacity(0.0)
+        toast.setGraphicsEffect(opacity)
+
+        fade_in = QPropertyAnimation(opacity, b"opacity", self)
+        fade_in.setDuration(150)
+        fade_in.setStartValue(0.0)
+        fade_in.setEndValue(1.0)
+        fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        fade_out = QPropertyAnimation(opacity, b"opacity", self)
+        fade_out.setDuration(300)
+        fade_out.setStartValue(1.0)
+        fade_out.setEndValue(0.0)
+        fade_out.setEasingCurve(QEasingCurve.Type.InCubic)
+        fade_out.finished.connect(toast.hide)
+
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(self._fade_out_save_toast)
+        fade_in.finished.connect(lambda: timer.start(2500))
+
+        self._save_toast = toast
+        self._save_toast_message_label = message_label
+        self._save_toast_opacity = opacity
+        self._save_toast_fade_in = fade_in
+        self._save_toast_fade_out = fade_out
+        self._save_toast_timer = timer
+
+    def _fade_out_save_toast(self) -> None:
+        if self._save_toast_opacity is None or self._save_toast_fade_out is None:
+            return
+        if self._save_toast_fade_in is not None:
+            self._save_toast_fade_in.stop()
+        self._save_toast_fade_out.setStartValue(
+            self._save_toast_opacity.opacity()
+        )
+        self._save_toast_fade_out.start()
+
+    def _position_save_toast(self) -> None:
+        if self._save_toast is None or self._save_toast_parent is None:
+            return
+        self._save_toast.adjustSize()
+        x = (self._save_toast_parent.width() - self._save_toast.width()) // 2
+        y = (
+            self._save_toast_parent.height()
+            - self._save_toast.height()
+            - 24
+        )
+        self._save_toast.move(max(0, x), max(0, y))
 
     def _inputs_changed(self) -> None:
         self._update_calculation()
@@ -632,17 +912,15 @@ class PricingSettingsPage(QWidget):
         self,
         moisture_percent: float | Decimal | str | None,
         bean_count: object,
-        pns_grade: str | None = None,
         batch_weight_grams: float | Decimal | str | None = None,
     ) -> None:
         self.current_moisture_percent = moisture_percent
         self.current_moisture_grade = self._moisture_grade_from_percentage(
             moisture_percent
         )
-        self.current_pns_grade = (
-            pns_grade_from_bean_count(bean_count)
-            if pns_grade is None
-            else pns_grade.strip()
+        self.current_pns_grade = pns_grade_from_weighted_count(
+            bean_count,
+            batch_weight_grams,
         )
         if batch_weight_grams is not None:
             self.set_current_weight(float(batch_weight_grams) / 1000)
@@ -711,16 +989,18 @@ class PricingSettingsPage(QWidget):
     def set_pns_sample_data(
         self,
         bean_count: int | float | Decimal | str,
+        sample_weight_grams: int | float | Decimal | str,
         moldy_count: int | float | Decimal | str,
         slaty_count: int | float | Decimal | str,
         defected_count: int | float | Decimal | str,
     ) -> None:
-        """Display a completed 100g sample classified by the IR sensor and AI."""
+        """Display a completed sample classified by the IR sensor and AI."""
         counts = (bean_count, moldy_count, slaty_count, defected_count)
         try:
             values = tuple(Decimal(str(value)) for value in counts)
+            sample_weight = Decimal(str(sample_weight_grams))
         except (InvalidOperation, TypeError, ValueError) as exc:
-            raise ValueError("PNS sample counts must be integers.") from exc
+            raise ValueError("PNS sample values must be numeric.") from exc
         if any(
             not value.is_finite()
             or value != value.to_integral_value()
@@ -736,8 +1016,16 @@ class PricingSettingsPage(QWidget):
             or moldy + slaty + defected > total
         ):
             raise ValueError("PNS sample counts are inconsistent.")
+        if not sample_weight.is_finite() or sample_weight <= 0:
+            raise ValueError(
+                "PNS sample weight must be finite and greater than zero."
+            )
 
-        self.set_grading_data(self.current_moisture_percent, int(total))
+        self.set_grading_data(
+            self.current_moisture_percent,
+            int(total),
+            sample_weight,
+        )
 
     def update_calibration_prompt(self, message: str) -> None:
         normalized = message.casefold()

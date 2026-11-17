@@ -2,13 +2,14 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QResizeEvent
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QColor, QGuiApplication, QResizeEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
     QButtonGroup,
     QCheckBox,
     QFrame,
+    QGraphicsDropShadowEffect,
     QHeaderView,
     QHBoxLayout,
     QLabel,
@@ -42,9 +43,50 @@ def _to_float(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+class _QualityFilterMenu(QMenu):
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setObjectName("bean_sheet_quality_filter_menu")
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        self.setWindowFlag(Qt.WindowType.Popup, True)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        button = self.parentWidget()
+        if not isinstance(button, QToolButton):
+            return
+        self._position_below_button(button)
+
+    def _position_below_button(self, button: QToolButton) -> None:
+        screen = QGuiApplication.screenAt(
+            button.mapToGlobal(QPoint(button.width() // 2, button.height()))
+        )
+        if screen is None:
+            screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+
+        menu_width = max(self.sizeHint().width(), 540)
+        menu_height = max(self.sizeHint().height(), 330)
+        geometry = screen.availableGeometry()
+        target = button.mapToGlobal(
+            QPoint(button.width() // 2, button.height() + 8)
+        )
+        x = min(
+            max(target.x() - menu_width // 2, geometry.left()),
+            geometry.right() - menu_width,
+        )
+        y = min(
+            max(target.y(), geometry.top()),
+            geometry.bottom() - menu_height,
+        )
+        self.move(x, y)
+
+
 class BeanDataSheetPage(QWidget):
     batch_history_updated = Signal(object)
-    grading_data_updated = Signal(object, object, object, object)
+    grading_data_updated = Signal(object, object, object)
     BATCH_SIZE_GRAMS = 100.0
 
     TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
@@ -145,9 +187,7 @@ class BeanDataSheetPage(QWidget):
             )
             self.view_mode_button_group.addButton(button, index)
             button.clicked.connect(
-                lambda _=False, view=index: (
-                    self.summary_stack.setCurrentIndex(view)
-                )
+                lambda _=False, view=index: self._set_view_mode(view)
             )
             view_tabs_layout.addWidget(button)
         self.view_summary_button.setChecked(True)
@@ -229,9 +269,9 @@ class BeanDataSheetPage(QWidget):
         self.summary_stack.addWidget(sensor_view)
         layout.addWidget(self.summary_stack)
 
-        table_panel = QFrame()
-        table_panel.setObjectName("bean_sheet_table_panel")
-        table_layout = QVBoxLayout(table_panel)
+        self.table_panel = QFrame()
+        self.table_panel.setObjectName("bean_sheet_table_panel")
+        table_layout = QVBoxLayout(self.table_panel)
         table_layout.setContentsMargins(10, 8, 10, 10)
         table_layout.setSpacing(8)
 
@@ -303,9 +343,13 @@ class BeanDataSheetPage(QWidget):
         self.empty_state.hide()
         table_layout.addWidget(self.empty_state)
 
-        layout.addWidget(table_panel, 1)
+        layout.addWidget(self.table_panel, 1)
         self.show_table("All Bean")
         self._update_summary_layout_direction()
+
+    def _set_view_mode(self, view: int) -> None:
+        self.summary_stack.setCurrentIndex(view)
+        self.table_panel.setVisible(view == 0)
 
     def _create_beans_summary_card(self) -> QFrame:
         card = QFrame()
@@ -500,21 +544,126 @@ class BeanDataSheetPage(QWidget):
             )
         return header
 
+    @staticmethod
+    def _filter_button_stylesheet() -> str:
+        return """
+            QToolButton#bean_sheet_apply_filter_button {
+                background-color: #FFFFFF;
+                border: 1px solid #C9D3CE;
+                border-radius: 10px;
+                color: #12402A;
+                font-size: 16px;
+                font-weight: 700;
+                min-height: 40px;
+                padding: 0 16px;
+            }
+            QToolButton#bean_sheet_apply_filter_button:hover {
+                border-color: #8CC4A2;
+            }
+            QToolButton#bean_sheet_apply_filter_button:open,
+            QToolButton#bean_sheet_apply_filter_button:pressed {
+                border: 1px solid #2E7D50;
+                outline: 3px solid #D4EBDD;
+                outline-offset: 2px;
+            }
+            QToolButton#bean_sheet_apply_filter_button::menu-indicator {
+                image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4.5l4 4 4-4' fill='none' stroke='%2312402A' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+                width: 12px;
+                height: 12px;
+                subcontrol-position: right center;
+                padding-left: 10px;
+            }
+            QToolButton#bean_sheet_apply_filter_button:open::menu-indicator {
+                image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 7.5l4-4 4 4' fill='none' stroke='%2312402A' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            }
+        """
+
+    @staticmethod
+    def _filter_popup_stylesheet() -> str:
+        return """
+            QMenu#bean_sheet_quality_filter_menu {
+                background: transparent;
+                margin: 0px;
+                padding: 0px;
+            }
+            QFrame#bean_sheet_quality_filter_panel {
+                background-color: #FFFFFF;
+                border: 1px solid #DDE3E0;
+                border-radius: 14px;
+                padding: 14px;
+            }
+            QFrame#bean_sheet_filter_divider {
+                background-color: #E3E8E5;
+                color: #E3E8E5;
+                max-width: 1px;
+                min-width: 1px;
+                margin: 0px 2px;
+            }
+            QFrame#bean_sheet_filter_group_header {
+                background-color: #E3F3EA;
+                border: 1px solid #BFE0CC;
+                border-radius: 9px;
+                min-height: 38px;
+                margin-bottom: 6px;
+            }
+            QLabel#bean_sheet_filter_group_title {
+                color: #12402A;
+                font-size: 16px;
+                font-weight: 700;
+            }
+            QCheckBox#bean_sheet_quality_filter_checkbox {
+                color: #12402A;
+                font-size: 15px;
+                min-height: 36px;
+                padding: 0 0 0 10px;
+                spacing: 12px;
+                border-radius: 8px;
+            }
+            QCheckBox#bean_sheet_quality_filter_checkbox:hover {
+                background-color: #F0F6F2;
+            }
+            QCheckBox#bean_sheet_quality_filter_checkbox:checked {
+                background-color: #E8F4EC;
+                font-weight: 600;
+            }
+            QCheckBox#bean_sheet_quality_filter_checkbox::indicator {
+                width: 20px;
+                height: 20px;
+                border: 1.5px solid #7F9A8C;
+                border-radius: 5px;
+                background-color: #FFFFFF;
+            }
+            QCheckBox#bean_sheet_quality_filter_checkbox::indicator:hover {
+                border-color: #2E7D50;
+            }
+            QCheckBox#bean_sheet_quality_filter_checkbox::indicator:checked {
+                background-color: #2E7D50;
+                border: 1.5px solid #2E7D50;
+                image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14'%3E%3Cpath d='M2.5 7.2l2.4 2.4 6.6-7' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            }
+        """
+
     def _create_quality_filter_button(self) -> QToolButton:
         button = QToolButton()
         button.setObjectName("bean_sheet_apply_filter_button")
-        button.setText("Apply Filter:  \u25be")
+        button.setText("Apply Filter:")
         button.setAccessibleName("Apply quality filter")
         button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         button.setMinimumSize(190, 42)
+        button.setStyleSheet(self._filter_button_stylesheet())
 
-        menu = QMenu(button)
-        menu.setObjectName("bean_sheet_quality_filter_menu")
+        menu = _QualityFilterMenu(button)
         filter_panel = self._create_quality_filter_panel()
         menu.setMinimumWidth(filter_panel.minimumWidth())
         filter_panel_action = QWidgetAction(menu)
         filter_panel_action.setDefaultWidget(filter_panel)
         menu.addAction(filter_panel_action)
+        menu.setStyleSheet(self._filter_popup_stylesheet())
+        shadow = QGraphicsDropShadowEffect(filter_panel)
+        shadow.setBlurRadius(32)
+        shadow.setOffset(0, 12)
+        shadow.setColor(QColor(41, 74, 60, 46))
+        filter_panel.setGraphicsEffect(shadow)
         button.setMenu(menu)
         return button
 
@@ -523,8 +672,8 @@ class BeanDataSheetPage(QWidget):
         panel.setObjectName("bean_sheet_quality_filter_panel")
         panel.setMinimumSize(520, 330)
         panel_layout = QHBoxLayout(panel)
-        panel_layout.setContentsMargins(8, 8, 8, 8)
-        panel_layout.setSpacing(10)
+        panel_layout.setContentsMargins(14, 14, 14, 14)
+        panel_layout.setSpacing(14)
 
         group_selector = QButtonGroup(panel)
         group_selector.setExclusive(True)
@@ -832,7 +981,7 @@ class BeanDataSheetPage(QWidget):
         )
         self.current_batch_weight_grams = batch_weight
 
-        # PNS grade and bean count are scoped to this 100 g batch.
+        # PNS grade and bean count are scoped to this measured batch.
         history_rows = self._pns_sample_rows()
         batch_bean_count = len(current_records)
         pns_grade = (
@@ -921,7 +1070,6 @@ class BeanDataSheetPage(QWidget):
         self.grading_data_updated.emit(
             passed_average_moisture,
             batch_bean_count,
-            pns_grade,
             batch_weight,
         )
         self.batch_history_updated.emit(history_rows)
@@ -1027,22 +1175,35 @@ class BeanDataSheetPage(QWidget):
         for batch_number, records in batches.items():
             counts = self._quality_counts(records)
             bean_count = len(records)
-            pns_result = None
-            if bean_count > 0:
-                pns_result = PricingSettingsPage.calculate_pns_grade(
-                    bean_count,
-                    counts["MOLDY"] * 100 / bean_count,
-                    counts["SLATY"] * 100 / bean_count,
-                    counts["DEFECTIVE"] * 100 / bean_count,
-                )
             weight = next(
                 (
-                    r["batch_weight_grams"]
+                    r.get("batch_weight_grams")
                     for r in reversed(records)
                     if _to_float(r.get("batch_weight_grams")) is not None
                 ),
                 None,
             )
+            sample_weight = _to_float(weight)
+            pns_result = None
+            if (
+                bean_count > 0
+                and sample_weight is not None
+                and sample_weight > 0
+            ):
+                pns_result = PricingSettingsPage.calculate_pns_grade(
+                    bean_count,
+                    weight,
+                    counts["MOLDY"] * 100 / bean_count,
+                    counts["SLATY"] * 100 / bean_count,
+                    counts["DEFECTIVE"] * 100 / bean_count,
+                )
+            pns_score = ""
+            if pns_result is not None:
+                pns_score = (
+                    str(pns_result["score"])
+                    if pns_result["score"] is not None
+                    else "Not specified"
+                )
             rows.append(
                 (
                     f"{batch_number:04d}",
@@ -1053,7 +1214,7 @@ class BeanDataSheetPage(QWidget):
                     counts["MOLDY"],
                     counts["SLATY"],
                     counts["DEFECTIVE"],
-                    pns_result["score"] if pns_result else "",
+                    pns_score,
                 )
             )
         return rows

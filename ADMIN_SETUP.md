@@ -37,7 +37,8 @@ Pricing Settings calculates weighted moisture/PNS scores and the total batch
 price automatically from the entered base price and scores, the two effect
 percentages (which always total 100%), and a batch weight in kilograms. The
 live batch weight comes from the calibrated good-bean load cell; not-good beans
-are not weighed. Moisture/PNS scores remain manual.
+are not weighed. Moisture grades and the pricing scores assigned to grades
+remain manual.
 
 The AS7265X model classifies beans; it does not estimate moisture percentage.
 The firmware also has no moisture sensor input, so Current Batch moisture
@@ -48,10 +49,14 @@ Batch records are currently held in application memory only. There is no
 database or API-backed persistence, and the Admin History page does not display
 sample records as if they were real batches.
 
-The Current Batch A/B/C grade uses the configured bean-count-to-weight ratio.
-The separate defect-based PNS sample scorer has no authoritative PNS
-specification in this repository; validate its thresholds against the
-applicable standard before relying on it operationally.
+The Current Batch A/B/C bean-size grade uses the measured bean count divided
+by the measured sample weight in grams: A below 1.01 beans/g, B from 1.01
+through 1.20 beans/g (inclusive), and C above 1.20 beans/g. The same
+weight-adjusted calculation is used in Pricing Settings and batch reports.
+The project has no authoritative PNS defect-percentage thresholds or score
+rules. Moldy, slaty, and defected percentages are validated and reported, but
+they do not change the A/B/C bean-size grade, and the defect-based PNS score is
+marked "Not specified" until an applicable standard is supplied.
 
 The Admin Control Panel shares the existing dashboard hardware controller.
 The Mega runs `NIR/mega_controller/mega_controller.ino`; the Nano runs
