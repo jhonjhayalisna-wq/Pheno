@@ -3,7 +3,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QColor, QGuiApplication, QResizeEvent
+from PySide6.QtGui import QColor, QGuiApplication, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
     QButtonGroup,
@@ -51,7 +51,7 @@ class _QualityFilterMenu(QMenu):
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setWindowFlag(Qt.WindowType.Popup, True)
 
-    def showEvent(self, event) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         button = self.parentWidget()
         if not isinstance(button, QToolButton):
@@ -64,8 +64,6 @@ class _QualityFilterMenu(QMenu):
         )
         if screen is None:
             screen = QGuiApplication.primaryScreen()
-        if screen is None:
-            return
 
         menu_width = max(self.sizeHint().width(), 540)
         menu_height = max(self.sizeHint().height(), 330)
@@ -765,10 +763,7 @@ class BeanDataSheetPage(QWidget):
             QSizePolicy.Policy.Expanding,
         )
         group_selector.addButton(radio)
-        radio.toggled.connect(
-            lambda checked=False, selected_title=title:
-            self._on_quality_filter_group_toggled(selected_title, checked)
-        )
+        radio.toggled.connect(self._on_quality_filter_group_toggled)
         self._quality_filter_group_radios[title] = radio
         header_layout.addWidget(radio)
         group_layout.addWidget(header)
@@ -792,11 +787,11 @@ class BeanDataSheetPage(QWidget):
 
     def _on_quality_filter_group_toggled(
         self,
-        title: str,
         checked: bool,
     ) -> None:
-        self._apply_quality_filter_group_state()
-        self._refresh_quality_filter()
+        if checked:
+            self._apply_quality_filter_group_state()
+            self._refresh_quality_filter()
 
     def _active_quality_filter_group(self) -> str | None:
         for title, radio in self._quality_filter_group_radios.items():
@@ -1019,8 +1014,10 @@ class BeanDataSheetPage(QWidget):
 
         if bean_id and bean_count > 0:
             record_key = (self.batch_number, bean_id)
-            record = self.bean_records.get(record_key)
-            if record is None:
+            bean_record: dict[str, Any] | None = self.bean_records.get(
+                record_key
+            )
+            if bean_record is None:
                 previous_key = next(
                     (
                         key
@@ -1030,7 +1027,7 @@ class BeanDataSheetPage(QWidget):
                     None,
                 )
                 if previous_key is None:
-                    record = {
+                    bean_record = {
                         "bean_id": bean_id,
                         "bean_count": bean_count,
                         "batch_weight_grams": None,
@@ -1044,18 +1041,18 @@ class BeanDataSheetPage(QWidget):
                         "nir_confidence": None,
                     }
                 else:
-                    record = self.bean_records.pop(previous_key)
-                self.bean_records[record_key] = record
+                    bean_record = self.bean_records.pop(previous_key)
+                self.bean_records[record_key] = bean_record
             # Only overwrite with real values so a late or partial update
             # can't wipe out data that already arrived.
-            record.update(
+            bean_record.update(
                 {
                     key: val
                     for key, val in record_metrics.items()
                     if val is not None
                 }
             )
-            record["bean_count"] = bean_count
+            bean_record["bean_count"] = bean_count
 
         current_records = [
             record
