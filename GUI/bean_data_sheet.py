@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from .pricing import PricingSettingsPage
 from .quality import (
     QUALITY_CATEGORIES,
+    is_foreign_object_category,
     moisture_grade_from_percentage,
     normalize_quality_category,
     pns_grade_from_weighted_count,
@@ -136,7 +137,7 @@ class BeanDataSheetPage(QWidget):
         self._quality_filter_groups: dict[str, list[QCheckBox]] = {}
         self._quality_filter_group_radios: dict[str, QRadioButton] = {}
         self._quality_filter_button_group: QButtonGroup | None = None
-        self.batch_number = 0
+        self.batch_number = 1
         self.batch_started = False
         self.current_average_moisture: float | None = None
         self.current_passed_average_moisture: float | None = None
@@ -147,7 +148,7 @@ class BeanDataSheetPage(QWidget):
         self.batch_snapshot: dict[str, Any] = {
             "bean_id": "0" * 12,
             "bean_count": 0,
-            "batch_number": 0,
+            "batch_number": 1,
             "batch_weight_grams": None,
             "cumulative_weight_grams": None,
             "moisture": None,
@@ -1002,7 +1003,8 @@ class BeanDataSheetPage(QWidget):
         record_metrics = dict(metrics)
         explicit_batch_number = _to_float(metrics.get("batch_number"))
         if explicit_batch_number is not None and explicit_batch_number >= 0:
-            self.batch_number = int(explicit_batch_number)
+            provided_batch_number = int(explicit_batch_number)
+            self.batch_number = max(1, provided_batch_number)
             self.batch_started = True
         else:
             cumulative_weight = _to_float(
@@ -1318,11 +1320,12 @@ class BeanDataSheetPage(QWidget):
     def _batch_for_weight(cls, cumulative_weight: float) -> tuple[int, float]:
         cumulative_weight = max(0.0, cumulative_weight)
         batch_number = max(
-            0,
-            math.ceil(cumulative_weight / cls.BATCH_SIZE_GRAMS) - 1,
+            1,
+            math.ceil(cumulative_weight / cls.BATCH_SIZE_GRAMS),
         )
         batch_weight = (
-            cumulative_weight - batch_number * cls.BATCH_SIZE_GRAMS
+            cumulative_weight
+            - (batch_number - 1) * cls.BATCH_SIZE_GRAMS
         )
         return batch_number, batch_weight
 
@@ -1365,16 +1368,20 @@ class BeanDataSheetPage(QWidget):
                     if pns_result["score"] is not None
                     else "Not specified"
                 )
+            bad_count = (
+                counts["MOLDY"]
+                + counts["SLATY"]
+                + counts["DEFECTIVE"]
+            )
             rows.append(
                 (
                     f"{batch_number:04d}",
-                    records[-1]["bean_id"],
+                    bean_count,
                     self._format_weight(weight),
-                    pns_result["grade"] if pns_result else "",
                     counts["GOOD"],
-                    counts["MOLDY"],
-                    counts["SLATY"],
-                    counts["DEFECTIVE"],
+                    bad_count,
+                    counts["FOREIGN"],
+                    pns_result["grade"] if pns_result else "",
                     pns_score,
                 )
             )
@@ -1402,8 +1409,12 @@ class BeanDataSheetPage(QWidget):
             "MOLDY": 0,
             "SLATY": 0,
             "DEFECTIVE": 0,
+            "FOREIGN": 0,
         }
         for record in records:
+            if is_foreign_object_category(record.get("quality")):
+                counts["FOREIGN"] += 1
+                continue
             quality = BeanDataSheetPage._filter_category_name(
                 record.get("quality")
             )

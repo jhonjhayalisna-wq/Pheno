@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 import re
 import time
 from datetime import date
-from math import isfinite
+from math import ceil, isfinite
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING, Any
@@ -152,6 +152,7 @@ class Dashboard(QWidget):
     bean_data_updated = Signal(object)
     EMEET_CAMERA_INDEX = 0
     GRAMS_PER_KILOGRAM = 1000.0
+    BATCH_SIZE_GRAMS = 100.0
     ARDUINO_PROTOCOL_TIMEOUT_SECONDS = 5.0
     IR_SAMPLE_START_RETRY_SECONDS = 1.0
 
@@ -224,7 +225,7 @@ class Dashboard(QWidget):
         self.serial_buffer: str = ""
         self.current_weight_kg: float | None = None
         self.good_weight_grams: float | None = None
-        self.current_batch_number = 0
+        self.current_batch_number = 1
         self.current_batch_weight_grams = 0.0
         self.batch_weight_baseline_grams: float | None = None
         self.system_running = False
@@ -629,13 +630,23 @@ class Dashboard(QWidget):
         if self.system_running:
             return
 
-        if not self.system_has_started:
-            self.batch_weight_baseline_grams = (
-                self.good_weight_grams
-                if self.good_weight_grams is not None
-                else 0.0
-            )
-            self.system_has_started = True
+        if self.system_has_started:
+            self.current_batch_number += 1
+        else:
+            self.current_batch_number = 1
+        self.system_has_started = True
+
+        self.batch_weight_baseline_grams = (
+            self.good_weight_grams
+            if self.good_weight_grams is not None
+            else 0.0
+        )
+        self.current_batch_weight_grams = 0.0
+        self.total_bean_count = 0
+        self.bean_id_sequence = 0
+        self.good_bean_count = 0
+        self.not_good_bean_count = 0
+        self.total_beans_value.setText("0")
         self.system_running = True
         self.set_ir_sample_active(True)
         self.start_camera()
@@ -654,6 +665,7 @@ class Dashboard(QWidget):
         self._update_system_controls(
             f"Batch {self.current_batch_number:04d}: Stopped"
         )
+        self.emit_bean_data_update()
 
     def _update_system_controls(self, status: str) -> None:
         self.start_system_button.setEnabled(not self.system_running)
@@ -666,9 +678,18 @@ class Dashboard(QWidget):
         elif cumulative_weight_grams < self.batch_weight_baseline_grams:
             self.batch_weight_baseline_grams = 0.0
 
-        self.current_batch_weight_grams = max(
+        batch_offset_grams = max(
             0.0,
             cumulative_weight_grams - self.batch_weight_baseline_grams,
+        )
+        self.current_batch_number = max(
+            1,
+            ceil(batch_offset_grams / self.BATCH_SIZE_GRAMS),
+        )
+        self.current_batch_weight_grams = max(
+            0.0,
+            batch_offset_grams
+            - (self.current_batch_number - 1) * self.BATCH_SIZE_GRAMS,
         )
 
     def initialize_nir_scanner(self) -> None:
@@ -1071,7 +1092,6 @@ class Dashboard(QWidget):
         preview_width = max(180, preview_width // 9 * 9)
         preview_height = preview_width * 16 // 9
         self.camera_frame.setFixedSize(preview_width, preview_height)
-        self.dashboard_subtitle.setVisible(True)
 
     def reflow_cards(self, columns: int) -> None:
         while self.cards_layout.count():
@@ -1951,28 +1971,17 @@ class Dashboard(QWidget):
         # PAGE TITLE
         # --------------------------------
 
-        title = QLabel("Dashboard")
+        title = QLabel("DASHBOARD")
         title.setObjectName("page_title")
         title.setSizePolicy(
             QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Fixed,
         )
 
-        subtitle = QLabel(
-            "Real-time cacao seed sorting and grading system"
-        )
-        subtitle.setObjectName("dashboard_subtitle")
-        subtitle.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Fixed,
-        )
-        self.dashboard_subtitle = subtitle
-
         heading_layout = QVBoxLayout()
         heading_layout.setContentsMargins(0, 0, 0, 0)
         heading_layout.setSpacing(4)
         heading_layout.addWidget(title)
-        heading_layout.addWidget(subtitle)
 
         # --------------------------------
         # STATUS CARDS

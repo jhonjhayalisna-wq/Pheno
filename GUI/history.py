@@ -40,15 +40,14 @@ def get_batch_by_id(batch_id: str) -> BatchRecord | None:
 
 class BatchHistoryPage(QWidget):
     COLUMNS = (
-        "Batch No.",
-        "Bean No.",
-        "Weight",
-        "PNS Grade",
-        "Good",
-        "Moldy",
-        "Slaty",
-        "Defective",
-        "PNS Score",
+        "BATCH NO",
+        "TOTAL BEANS",
+        "TOTAL WEIGHT",
+        "GOOD",
+        "BAD",
+        "FOREIGN",
+        "PNS GRADE",
+        "PNS SCORE",
     )
 
     def __init__(self):
@@ -58,12 +57,9 @@ class BatchHistoryPage(QWidget):
         layout.setContentsMargins(14, 12, 14, 14)
         layout.setSpacing(8)
 
-        title = QLabel("Batch History")
+        title = QLabel("BATCH HISTORY")
         title.setObjectName("page_title")
-        description = QLabel("Review PNS grade samples from previous batches.")
-        description.setObjectName("settings_description")
         layout.addWidget(title)
-        layout.addWidget(description)
 
         self.data_table = QTableWidget(0, len(self.COLUMNS))
         self.data_table.setObjectName("batch_history_table")

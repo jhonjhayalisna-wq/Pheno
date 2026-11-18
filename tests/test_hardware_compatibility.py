@@ -2793,7 +2793,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             {
                 "bean_id": "bean-1",
                 "bean_count": 1,
-                "batch_number": 0,
+                "batch_number": 1,
                 "batch_weight_grams": 50.0,
                 "quality": "GOOD",
                 "moisture": 7.0,
@@ -2824,15 +2824,15 @@ class HardwareCompatibilityTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(page.batch_number_value.text(), "0000")
+        self.assertEqual(page.batch_number_value.text(), "0001")
         self.assertEqual(page.total_weight_value.text(), "")
         self.assertEqual(page.current_bean_count, 1)
         self.assertEqual(page.moisture_classification_value.text(), "")
         self.assertEqual(page.average_moisture_content_value.text(), "")
         self.assertEqual(page.data_table.item(0, 2).text(), "")
         self.assertEqual(history_rows[0][2], "")
-        self.assertEqual(history_rows[0][3], "")
-        self.assertEqual(history_rows[0][8], "")
+        self.assertEqual(history_rows[0][6], "")
+        self.assertEqual(history_rows[0][7], "")
 
         page.show_table("Moisture Content Sample")
         self.assertEqual(page.data_table.rowCount(), 0)
@@ -2885,7 +2885,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 {
                     "bean_id": bean_id,
                     "bean_count": index,
-                    "batch_number": 0,
+                    "batch_number": 1,
                     "quality": "GOOD",
                     "moisture": moisture,
                 }
@@ -3007,7 +3007,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "confidence": 0.84,
             }
         )
-        self.assertEqual(page.batch_number_value.text(), "0000")
+        self.assertEqual(page.batch_number_value.text(), "0001")
         self.assertEqual(page.total_weight_value.text(), "100.00 g")
 
         table = page.data_table
@@ -3029,9 +3029,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(table.item(0, 4).text(), "")
         self.assertNotIn("PNS Grade Sample", page.table_tabs)
         self.assertEqual(page.pns_grade_value.text(), "A")
-        self.assertEqual(history_rows[0][0], "0000")
-        self.assertEqual(history_rows[0][3], "A")
-        self.assertEqual(history_rows[0][8], "Not specified")
+        self.assertEqual(history_rows[0][0], "0001")
+        self.assertEqual(history_rows[0][6], "A")
+        self.assertEqual(history_rows[0][7], "Not specified")
 
         page.update_dashboard_metrics(
             {
@@ -3153,7 +3153,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             b"BEAN_COUNT: 1\n"
             b"Load Cell 1: 99.00 g\n"
         )
-        self.assertEqual(page.batch_number_value.text(), "0000")
+        self.assertEqual(page.batch_number_value.text(), "0001")
         self.assertEqual(page.total_weight_value.text(), "99.00 g")
         self.assertEqual(page.current_bean_count, 1)
         self.assertEqual(dashboard.batch_weight_value.text(), "99.00")
@@ -3163,7 +3163,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             b"BEAN_COUNT: 2\n"
             b"Load Cell 1: 100.00 g\n"
         )
-        self.assertEqual(page.batch_number_value.text(), "0000")
+        self.assertEqual(page.batch_number_value.text(), "0001")
         self.assertEqual(page.total_weight_value.text(), "100.00 g")
         self.assertEqual(page.current_bean_count, 2)
         self.assertEqual(dashboard.batch_weight_value.text(), "100.00")
@@ -3476,7 +3476,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 {
                     "bean_id": f"bean-{bean_count}",
                     "bean_count": bean_count,
-                    "batch_number": 0,
+                    "batch_number": 1,
                     "batch_weight_grams": 100.0,
                     "quality": "MOLDY",
                 }
@@ -3500,8 +3500,8 @@ class HardwareCompatibilityTests(unittest.TestCase):
         }
 
         row = page._pns_sample_rows()[0]
-        self.assertEqual(row[3], "C")
-        self.assertEqual(row[8], "Not specified")
+        self.assertEqual(row[6], "C")
+        self.assertEqual(row[7], "Not specified")
         page.deleteLater()
 
     def test_pns_grade_rejects_invalid_count_or_weight(self):
