@@ -65,9 +65,12 @@ from PySide6.QtMultimedia import QMediaDevices
 from .animated_button import AnimatedButton
 from .nir_classifier import (
     NIRClassifier,
+    NIRMoisturePredictor,
     SCANS_PER_BEAN,
     default_nir_model_path,
+    default_nir_moisture_model_path,
     load_nir_classifier,
+    load_nir_moisture_predictor,
 )
 from NIR.as7265x import AS7265XReader
 
@@ -179,6 +182,9 @@ class Dashboard(QWidget):
         self.nir_model_path = str(default_nir_model_path())
         self.nir_model_error = ""
         self.nir_model_warning = ""
+        self.nir_moisture_predictor: NIRMoisturePredictor | None = None
+        self.nir_moisture_model_path = str(default_nir_moisture_model_path())
+        self.nir_moisture_model_error = ""
         self.nir_sample_spectra: list[list[float]] = []
         self.nir_pending_spectrum: list[float] | None = None
         self.current_nir_spectra: list[list[float]] = []
@@ -268,6 +274,10 @@ class Dashboard(QWidget):
 
         self.setup_ui()
         self.set_nir_model_path(self.nir_model_path, log_result=False)
+        self.set_nir_moisture_model_path(
+            self.nir_moisture_model_path,
+            log_result=False,
+        )
         self.load_ai_model(log_result=False)
         self.update_camera_status("Camera is Off")
         self.update_camera_status_indicator()
@@ -946,6 +956,7 @@ class Dashboard(QWidget):
     def _reset_current_bean_readings(self) -> None:
         self.current_bean_camera_quality = None
         self.last_quality_confidence = 0.0
+        self.current_nir_moisture = None
         self.quality_value.setText("UNDEFINED")
         self.current_nir_spectra = []
         self.current_nir_classification = None
@@ -971,7 +982,7 @@ class Dashboard(QWidget):
                 if self.current_weight_kg is not None
                 else None
             ),
-            "moisture": None,
+            "moisture": self.current_nir_moisture,
             "quality": self.quality_value.text(),
             "confidence": (
                 self.last_quality_confidence
@@ -1552,6 +1563,7 @@ class Dashboard(QWidget):
         spectra = self.nir_sample_spectra
         self.nir_sample_spectra = []
         self.nir_pending_spectrum = None
+        self.current_nir_moisture = None
         self.current_nir_spectra = [list(scan) for scan in spectra]
         self.current_nir_classification = "UNAVAILABLE"
         self.current_nir_confidence = None
@@ -1601,6 +1613,23 @@ class Dashboard(QWidget):
                     f"NIR AI classified bean as {prediction.label.upper()} "
                     f"({prediction.confidence * 100.0:.1f}% confidence)."
                 )
+                if self.nir_moisture_predictor is None:
+                    error = (
+                        self.nir_moisture_model_error
+                        or "NIR moisture model is not loaded."
+                    )
+                    self.system_log_received.emit(
+                        f"NIR moisture estimation unavailable: {error}"
+                    )
+                else:
+                    try:
+                        self.current_nir_moisture = (
+                            self.nir_moisture_predictor.predict(spectra)
+                        )
+                    except Exception as exc:
+                        self.system_log_received.emit(
+                            f"NIR moisture prediction failed: {exc}"
+                        )
 
         self.emit_bean_data_update()
         if not self.write_arduino_command(command):
@@ -1784,6 +1813,31 @@ class Dashboard(QWidget):
                     f"NIR AI model compatibility warning: "
                     f"{self.nir_model_warning}"
                 )
+        return True
+
+    def set_nir_moisture_model_path(
+        self,
+        model_path: str | Path | None,
+        log_result: bool = True,
+    ) -> bool:
+        model_path = str(model_path or "").strip()
+        try:
+            predictor, model_file = load_nir_moisture_predictor(model_path)
+        except (OSError, ValueError, RuntimeError) as exc:
+            self.nir_moisture_predictor = None
+            self.nir_moisture_model_path = model_path
+            self.nir_moisture_model_error = str(exc)
+            if log_result:
+                self.system_log_received.emit(self.nir_moisture_model_error)
+            return False
+
+        self.nir_moisture_predictor = predictor
+        self.nir_moisture_model_path = str(model_file)
+        self.nir_moisture_model_error = ""
+        if log_result:
+            self.system_log_received.emit(
+                f"NIR moisture model loaded from {model_file}."
+            )
         return True
 
     def render_camera_frame(

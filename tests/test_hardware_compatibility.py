@@ -1387,6 +1387,101 @@ class HardwareCompatibilityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "18 measurements"):
             classifier.predict([[0.5] * 17 for _ in range(3)])
 
+    def test_nir_models_load_parse_shuffled_labels_and_update_reading(self):
+        dashboard = Dashboard()
+        self.addCleanup(dashboard.close)
+        page = NIRAnalysisPage()
+        self.addCleanup(page.close)
+        bean_data_sheet = BeanDataSheetPage()
+        self.addCleanup(bean_data_sheet.deleteLater)
+        dashboard.bean_data_updated.connect(page.update_bean_data)
+        dashboard.bean_data_updated.connect(
+            bean_data_sheet.update_dashboard_metrics
+        )
+        dashboard.nir_classification_changed.connect(
+            page.set_classifier_result
+        )
+        dashboard.total_bean_count = 1
+        dashboard.quality_value.setText("GOOD")
+
+        self.assertIsNotNone(dashboard.nir_classifier)
+        self.assertIsNotNone(dashboard.nir_moisture_predictor)
+        assert dashboard.nir_classifier is not None
+        assert dashboard.nir_moisture_predictor is not None
+        self.assertEqual(type(dashboard.nir_classifier.model).__name__, "Pipeline")
+        self.assertEqual(
+            tuple(dashboard.nir_classifier.model.classes_),
+            ("good", "moldy", "slaty"),
+        )
+        self.assertEqual(
+            type(dashboard.nir_moisture_predictor.model).__name__,
+            "RandomForestRegressor",
+        )
+
+        labeled_values = list(zip(WAVELENGTHS, range(1, 19)))
+        ordered_line = " | ".join(
+            f"{wavelength}nm: {value}"
+            for wavelength, value in labeled_values
+        )
+        shuffled_line = " | ".join(
+            f"{wavelength}nm: {value}"
+            for wavelength, value in reversed(labeled_values)
+        )
+        ordered_spectrum = dashboard._parse_nir_spectrum(ordered_line)
+        shuffled_spectrum = dashboard._parse_nir_spectrum(shuffled_line)
+        expected_values = [float(value) for _, value in labeled_values]
+        self.assertEqual(ordered_spectrum, expected_values)
+        self.assertEqual(shuffled_spectrum, expected_values)
+
+        ordered_scans = [ordered_spectrum] * 3
+        shuffled_scans = [shuffled_spectrum] * 3
+        ordered_classification = dashboard.nir_classifier.predict(
+            ordered_scans
+        )
+        shuffled_classification = dashboard.nir_classifier.predict(
+            shuffled_scans
+        )
+        ordered_moisture = dashboard.nir_moisture_predictor.predict(
+            ordered_scans
+        )
+        shuffled_moisture = dashboard.nir_moisture_predictor.predict(
+            shuffled_scans
+        )
+        self.assertEqual(ordered_classification, shuffled_classification)
+        self.assertEqual(ordered_moisture, shuffled_moisture)
+
+        dashboard.nir_sample_spectra = shuffled_scans
+        with patch.object(dashboard, "write_arduino_command", return_value=True):
+            dashboard._classify_nir_sample()
+
+        self.assertEqual(page.quality_value.text(), shuffled_classification.label.upper())
+        self.assertEqual(
+            page.nir_confidence_value.text(),
+            f"{shuffled_classification.confidence * 100.0:.1f}%",
+        )
+        self.assertEqual(
+            page.moisture_content_value.text(),
+            f"{shuffled_moisture:.2f}%",
+        )
+        self.assertEqual(
+            dashboard.get_bean_data_snapshot()["moisture"],
+            shuffled_moisture,
+        )
+        bean_record = bean_data_sheet.bean_records[
+            (bean_data_sheet.batch_number, dashboard.current_bean_id)
+        ]
+        self.assertEqual(bean_record["moisture"], shuffled_moisture)
+        self.assertEqual(
+            bean_data_sheet.current_average_moisture,
+            shuffled_moisture,
+        )
+        bean_data_sheet.show_table("Moisture Content Sample")
+        self.assertEqual(bean_data_sheet.data_table.rowCount(), 1)
+        self.assertEqual(
+            bean_data_sheet.data_table.item(0, 1).text(),
+            f"{shuffled_moisture:.2f}",
+        )
+
     def test_nir_analysis_discloses_unavailable_moisture_estimation(self):
         page = NIRAnalysisPage()
         self.addCleanup(page.close)
@@ -1767,6 +1862,29 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.pns_grade_label.text(), "C")
         self.assertEqual(page.pns_score_input.text(), "90")
         page.deleteLater()
+
+    def test_current_batch_pns_score_uses_configured_grade_score(self):
+        pricing_page = PricingSettingsPage()
+        bean_data_page = BeanDataSheetPage()
+        pricing_page.pricing_summary_updated.connect(
+            bean_data_page.update_pricing_summary
+        )
+        for grade, score, bean_count in (
+            ("A", "100", 100),
+            ("B", "60", 110),
+            ("C", "50", 130),
+        ):
+            with self.subTest(grade=grade):
+                pricing_page.pns_grade_score_inputs[grade].setText(score)
+                pricing_page.set_grading_data(7.0, bean_count, 100.0)
+                self.assertEqual(pricing_page.current_pns_grade, grade)
+                self.assertEqual(pricing_page.pns_score_input.text(), score)
+                self.assertEqual(
+                    bean_data_page.actual_pns_score_value.text(),
+                    score,
+                )
+        pricing_page.deleteLater()
+        bean_data_page.deleteLater()
 
     def test_grade_scores_are_user_entered_and_drive_pricing(self):
         page = PricingSettingsPage()
@@ -2823,6 +2941,11 @@ class HardwareCompatibilityTests(unittest.TestCase):
 
     def test_bean_data_tables_update_from_dashboard_metrics(self):
         page = BeanDataSheetPage()
+        self.assertEqual(page.table_tabs["All Bean"].text(), "ALL BEANS")
+        self.assertEqual(
+            page.table_tabs["Moisture Content Sample"].text(),
+            "MOISTURE",
+        )
         history_rows = []
         page.batch_history_updated.connect(history_rows.extend)
         page.update_dashboard_metrics(

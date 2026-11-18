@@ -104,7 +104,7 @@ class BeanDataSheetPage(QWidget):
     }
     TABLE_TAB_LABELS = {
         "All Bean": "ALL BEANS",
-        "Moisture Content Sample": "MOISTURE CONTENT",
+        "Moisture Content Sample": "MOISTURE",
     }
 
     EMPTY_MESSAGES: dict[str, str] = {
@@ -428,7 +428,7 @@ class BeanDataSheetPage(QWidget):
         pns_section = QWidget()
         pns_layout = QVBoxLayout(pns_section)
         pns_layout.setContentsMargins(0, 0, 0, 0)
-        self.actual_pns_score_label = QLabel("PHILIPPINE NATIONAL STANDARD:")
+        self.actual_pns_score_label = QLabel("PHILIPPINE NATIONAL STANDARD")
         self.actual_pns_score_label.setObjectName("bean_sheet_score_label")
         self.actual_pns_score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.actual_pns_score_label.setWordWrap(True)
