@@ -29,7 +29,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from .quality import pns_grade_from_weighted_count
+from .quality import (
+    moisture_grade_from_percentage,
+    pns_grade_from_weighted_count,
+)
 
 
 class PriceCalculationResult(TypedDict):
@@ -49,6 +52,7 @@ class PricingSettingsPage(QWidget):
     calibration_continue_requested = Signal()
     calibration_mass_requested = Signal(str)
     pricing_summary_updated = Signal(str, str, str)
+    moisture_grade_scores_updated = Signal(object)
 
     def __init__(
         self,
@@ -491,7 +495,11 @@ class PricingSettingsPage(QWidget):
                 score_input.setAccessibleName(
                     f"{title} score assigned to grade {grade}"
                 )
-                score_input.textChanged.connect(self._grade_scores_changed)
+                score_input.textChanged.connect(
+                    self._moisture_grade_scores_changed
+                    if grade_inputs is moisture_inputs
+                    else self._grade_scores_changed
+                )
                 table.addWidget(
                     score_input,
                     row,
@@ -908,6 +916,18 @@ class PricingSettingsPage(QWidget):
     def _grade_scores_changed(self) -> None:
         self._apply_grade_scores()
 
+    def _moisture_grade_scores_changed(self) -> None:
+        self._grade_scores_changed()
+        self.moisture_grade_scores_updated.emit(
+            self.get_moisture_grade_scores()
+        )
+
+    def get_moisture_grade_scores(self) -> dict[str, str]:
+        return {
+            grade: score_input.text().strip()
+            for grade, score_input in self.moisture_grade_score_inputs.items()
+        }
+
     def set_grading_data(
         self,
         moisture_percent: float | Decimal | str | None,
@@ -915,7 +935,7 @@ class PricingSettingsPage(QWidget):
         batch_weight_grams: float | Decimal | str | None = None,
     ) -> None:
         self.current_moisture_percent = moisture_percent
-        self.current_moisture_grade = self._moisture_grade_from_percentage(
+        self.current_moisture_grade = moisture_grade_from_percentage(
             moisture_percent
         )
         self.current_pns_grade = pns_grade_from_weighted_count(
@@ -926,27 +946,6 @@ class PricingSettingsPage(QWidget):
             self.set_current_weight(float(batch_weight_grams) / 1000)
         self.pns_grade_label.setText(self.current_pns_grade)
         self._apply_grade_scores()
-
-    @staticmethod
-    def _moisture_grade_from_percentage(
-        moisture_percent: float | Decimal | str | None,
-    ) -> str:
-        if moisture_percent is None:
-            return ""
-        try:
-            moisture = Decimal(str(moisture_percent))
-        except (InvalidOperation, TypeError, ValueError):
-            return ""
-        if (
-            not moisture.is_finite()
-            or not Decimal(0) <= moisture <= Decimal(100)
-        ):
-            return ""
-        if Decimal(6) <= moisture <= Decimal("7.5"):
-            return "A"
-        if moisture < Decimal(6):
-            return "B"
-        return "C"
 
     @staticmethod
     def _configured_grade_score(

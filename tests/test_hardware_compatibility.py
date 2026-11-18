@@ -2865,6 +2865,55 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.average_moisture_content_value.text(), "7.00%")
         page.deleteLater()
 
+    def test_moisture_table_uses_configured_grade_scores(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        pricing_page = window.pricing_page
+        bean_data_page = window.bean_data_sheet_page
+        for grade, score in (("A", "100"), ("B", "60"), ("C", "50")):
+            pricing_page.moisture_grade_score_inputs[grade].setText(score)
+
+        for index, (bean_id, moisture) in enumerate(
+            (
+                ("near-brittle", 5.9),
+                ("ideal", 6.5),
+                ("near-excessive", 7.6),
+            ),
+            start=1,
+        ):
+            bean_data_page.update_dashboard_metrics(
+                {
+                    "bean_id": bean_id,
+                    "bean_count": index,
+                    "batch_number": 0,
+                    "quality": "GOOD",
+                    "moisture": moisture,
+                }
+            )
+
+        bean_data_page.show_table("Moisture Content Sample")
+        self.assertEqual(bean_data_page.data_table.rowCount(), 3)
+        self.assertEqual(
+            [
+                (
+                    bean_data_page.data_table.item(row, 2).text(),
+                    bean_data_page.data_table.item(row, 3).text(),
+                )
+                for row in range(bean_data_page.data_table.rowCount())
+            ],
+            [
+                ("NEAR BRITTLE", "60.00"),
+                ("IDEAL", "100.00"),
+                ("NEAR EXCESSIVE", "50.00"),
+            ],
+        )
+
+        pricing_page.moisture_grade_score_inputs["A"].setText("95")
+        self.assertEqual(
+            bean_data_page.data_table.item(1, 3).text(),
+            "95.00",
+        )
+
     def test_bean_data_average_and_quality_counts_match_moisture_table(self):
         page = BeanDataSheetPage()
         self.assertEqual(page.bad_bean_count_value.text(), "")

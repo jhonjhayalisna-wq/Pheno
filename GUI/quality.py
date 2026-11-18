@@ -40,6 +40,23 @@ def pns_grade_from_weighted_count(
     return "C"
 
 
+def moisture_grade_from_percentage(moisture_percent: object) -> str:
+    try:
+        moisture = Decimal(str(moisture_percent))
+    except (InvalidOperation, TypeError, ValueError):
+        return ""
+    if (
+        not moisture.is_finite()
+        or not Decimal(0) <= moisture <= Decimal(100)
+    ):
+        return ""
+    if Decimal(6) <= moisture <= Decimal("7.5"):
+        return "A"
+    if moisture < Decimal(6):
+        return "B"
+    return "C"
+
+
 def normalize_quality_category(raw_name: object) -> str | None:
     normalized = re.sub(
         r"\s*\([^)]*\)\s*$",

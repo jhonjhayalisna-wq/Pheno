@@ -223,6 +223,12 @@ class MainWindow(QMainWindow):
         self.pricing_page.pricing_summary_updated.connect(
             self.bean_data_sheet_page.update_pricing_summary
         )
+        self.pricing_page.moisture_grade_scores_updated.connect(
+            self.bean_data_sheet_page.set_moisture_grade_scores
+        )
+        self.bean_data_sheet_page.set_moisture_grade_scores(
+            self.pricing_page.get_moisture_grade_scores()
+        )
         self.bean_data_sheet_page.grading_data_updated.connect(
             self.pricing_page.set_grading_data
         )

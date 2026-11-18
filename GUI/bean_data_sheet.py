@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from .pricing import PricingSettingsPage
 from .quality import (
     QUALITY_CATEGORIES,
+    moisture_grade_from_percentage,
     normalize_quality_category,
     pns_grade_from_weighted_count,
 )
@@ -106,6 +107,11 @@ class BeanDataSheetPage(QWidget):
         "All Bean": "ALL BEANS",
         "Moisture Content Sample": "MOISTURE",
     }
+    MOISTURE_GRADE_LABELS = {
+        "A": "IDEAL",
+        "B": "NEAR BRITTLE",
+        "C": "NEAR EXCESSIVE",
+    }
 
     EMPTY_MESSAGES: dict[str, str] = {
         "All Bean": "No beans recorded for this batch yet.",
@@ -134,6 +140,7 @@ class BeanDataSheetPage(QWidget):
         self.batch_started = False
         self.current_average_moisture: float | None = None
         self.current_passed_average_moisture: float | None = None
+        self.moisture_grade_scores: dict[str, float] | None = None
         self.current_bean_count = 0
         self.current_batch_weight_grams: float | None = None
         self.current_table_title = "All Bean"
@@ -1053,6 +1060,7 @@ class BeanDataSheetPage(QWidget):
                 }
             )
             bean_record["bean_count"] = bean_count
+            self._update_moisture_record(bean_record)
 
         current_records = [
             record
@@ -1183,6 +1191,32 @@ class BeanDataSheetPage(QWidget):
         )
         self.batch_history_updated.emit(history_rows)
         self._populate_table(self.current_table_title)
+
+    def set_moisture_grade_scores(
+        self,
+        scores: Mapping[str, Any],
+    ) -> None:
+        configured_scores: dict[str, float] = {}
+        for grade in ("A", "B", "C"):
+            score = _to_float(scores.get(grade))
+            if score is not None and 0 <= score <= 100:
+                configured_scores[grade] = score
+        self.moisture_grade_scores = configured_scores
+        for record in self.bean_records.values():
+            self._update_moisture_record(record)
+        self._populate_table(self.current_table_title)
+
+    def _update_moisture_record(self, record: dict[str, Any]) -> None:
+        moisture = _to_float(record.get("moisture"))
+        if moisture is None:
+            return
+
+        grade = moisture_grade_from_percentage(moisture)
+        record["moisture_classification"] = self.MOISTURE_GRADE_LABELS.get(
+            grade
+        )
+        if self.moisture_grade_scores is not None:
+            record["moisture_score"] = self.moisture_grade_scores.get(grade)
 
     def _populate_table(self, title: str) -> None:
         self.data_table.setRowCount(0)
