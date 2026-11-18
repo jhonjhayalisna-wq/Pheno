@@ -363,11 +363,6 @@ class BeanDataSheetPage(QWidget):
         self.beans_title.setObjectName("bean_sheet_summary_title")
         self.beans_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.total_beans_value = QLabel("")
-        self.total_beans_value.setObjectName("bean_sheet_summary_value")
-        self.total_beans_value.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
         card_layout.addWidget(
             self.beans_title,
             alignment=Qt.AlignmentFlag.AlignHCenter,
@@ -413,17 +408,7 @@ class BeanDataSheetPage(QWidget):
         bad_count_layout.addWidget(self.bad_bean_count_value, 1)
         counts_layout.addLayout(bad_count_layout, 1)
 
-        total_beans_layout = QHBoxLayout()
-        total_beans_layout.setContentsMargins(4, 0, 4, 0)
-        total_beans_layout.setSpacing(8)
-        self.total_beans_title = QLabel("")
-        self.total_beans_title.setObjectName("bean_sheet_count_title")
-        self.total_beans_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        total_beans_layout.addWidget(self.total_beans_title, 1)
-        total_beans_layout.addWidget(self.total_beans_value, 1)
-
         card_layout.addLayout(counts_layout, 1)
-        card_layout.addLayout(total_beans_layout)
         return card
 
     def _create_actual_batch_score_panel(self) -> QFrame:
@@ -446,7 +431,7 @@ class BeanDataSheetPage(QWidget):
         pns_section = QWidget()
         pns_layout = QVBoxLayout(pns_section)
         pns_layout.setContentsMargins(0, 0, 0, 0)
-        self.actual_pns_score_label = QLabel("Philippine National Standard:")
+        self.actual_pns_score_label = QLabel("Philippine National Standard")
         self.actual_pns_score_label.setObjectName("bean_sheet_score_label")
         self.actual_pns_score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.actual_pns_score_label.setWordWrap(True)
@@ -993,9 +978,6 @@ class BeanDataSheetPage(QWidget):
             else ""
         )
         self.pns_grade_value.setText(pns_grade)
-        self.total_beans_value.setText(
-            str(batch_bean_count) if batch_bean_count > 0 else ""
-        )
 
         # Moisture averages (all beans, and GOOD beans only).
         moisture_values: list[float] = []

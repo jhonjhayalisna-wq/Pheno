@@ -236,7 +236,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
         current_batch_widgets = (
             current_batch.findChild(QLabel, "bean_sheet_description"),
             current_batch.findChild(QLabel, "bean_sheet_summary_title"),
-            current_batch.total_beans_value,
             current_batch.good_bean_count_title,
             current_batch.good_bean_count_value,
             current_batch.bad_bean_count_title,
@@ -2483,13 +2482,12 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 page.batch_number_value.text(),
                 page.total_weight_value.text(),
                 page.pns_grade_value.text(),
-                page.total_beans_value.text(),
                 page.average_moisture_content_value.text(),
                 page.moisture_classification_value.text(),
                 page.good_bean_count_value.text(),
                 page.bad_bean_count_value.text(),
             ),
-            ("", "", "", "", "", "", "", ""),
+            ("", "", "", "", "", "", ""),
         )
         self.assertEqual(
             (
@@ -2523,7 +2521,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.batch_number_value.text(), "0001")
         self.assertEqual(page.total_weight_value.text(), "50.00 g")
         self.assertEqual(page.pns_grade_value.text(), "A")
-        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(page.current_bean_count, 1)
         self.assertEqual(page.average_moisture_content_value.text(), "6.50%")
         self.assertEqual(page.moisture_classification_value.text(), "Ideal")
         self.assertEqual(page.good_bean_count_value.text(), "1")
@@ -2582,8 +2580,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.good_bean_count_title.text(), "No. of Good Beans")
         self.assertEqual(page.bad_bean_count_title.text(), "No. of Bad Beans")
         self.assertEqual(page.beans_title.text(), "Beans")
-        self.assertEqual(page.total_beans_title.text(), "")
-        self.assertEqual(page.beans_title.parentWidget().layout().spacing(), 8)
+        beans_card_layout = page.beans_title.parentWidget().layout()
+        self.assertEqual(beans_card_layout.spacing(), 8)
+        self.assertEqual(beans_card_layout.count(), 2)
         self.application.processEvents()
         self.assertLess(
             page.beans_title.y(),
@@ -2598,16 +2597,8 @@ class HardwareCompatibilityTests(unittest.TestCase):
             page.good_bean_count_value.y(),
         )
         self.assertLess(
-            page.good_bean_count_title.y(),
-            page.total_beans_value.y(),
-        )
-        self.assertLess(
             page.bad_bean_count_title.y(),
             page.bad_bean_count_value.y(),
-        )
-        self.assertLess(
-            page.bad_bean_count_title.y(),
-            page.total_beans_value.y(),
         )
         page.update_pricing_summary("", "", "₱ —")
         self.assertEqual(page.actual_pns_score_value.text(), "")
@@ -2705,7 +2696,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
 
         self.assertEqual(page.batch_number_value.text(), "0000")
         self.assertEqual(page.total_weight_value.text(), "")
-        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(page.current_bean_count, 1)
         self.assertEqual(page.moisture_classification_value.text(), "")
         self.assertEqual(page.average_moisture_content_value.text(), "")
         self.assertEqual(page.data_table.item(0, 2).text(), "")
@@ -2717,7 +2708,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.data_table.rowCount(), 0)
         page.deleteLater()
 
-    def test_bean_data_displays_total_beans_and_moisture_scores(self):
+    def test_bean_data_tracks_total_beans_and_moisture_scores(self):
         page = BeanDataSheetPage()
         page.update_dashboard_metrics(
             {
@@ -2740,7 +2731,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(page.total_beans_value.text(), "2")
+        self.assertEqual(page.current_bean_count, 2)
         self.assertEqual(page.average_moisture_content_value.text(), "7.00%")
         page.deleteLater()
 
@@ -2770,7 +2761,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 }
             )
 
-        self.assertEqual(page.total_beans_value.text(), "9")
+        self.assertEqual(page.current_bean_count, 9)
         self.assertEqual(page.average_moisture_content_value.text(), "7.00%")
         self.assertEqual(page.bad_bean_count_value.text(), "7")
         self.assertEqual(page.good_bean_count_value.text(), "2")
@@ -2870,7 +2861,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual(page.batch_number_value.text(), "0001")
         self.assertEqual(page.total_weight_value.text(), "1.00 g")
-        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(page.current_bean_count, 1)
         self.assertEqual(page.data_table.rowCount(), 1)
         self.assertEqual(page.data_table.item(0, 0).text(), "202610260002")
         self.assertEqual(page.data_table.item(0, 1).text(), "MOLDY")
@@ -2905,7 +2896,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual(page.batch_number_value.text(), "0002")
         self.assertEqual(page.total_weight_value.text(), "1.00 g")
-        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(page.current_bean_count, 1)
         self.assertEqual(page.data_table.rowCount(), 1)
         self.assertEqual(page.data_table.item(0, 0).text(), "202610260003")
         self.assertEqual(history_rows[-1][0], "0002")
@@ -2921,7 +2912,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual(page.batch_number_value.text(), "0004")
         self.assertEqual(page.total_weight_value.text(), "100.00 g")
-        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(page.current_bean_count, 1)
         self.assertEqual(page.data_table.item(0, 0).text(), "202610260004")
         self.assertEqual(history_rows[-1][0], "0004")
 
@@ -2980,7 +2971,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual(page.batch_number_value.text(), "0000")
         self.assertEqual(page.total_weight_value.text(), "99.00 g")
-        self.assertEqual(page.total_beans_value.text(), "1")
+        self.assertEqual(page.current_bean_count, 1)
         self.assertEqual(dashboard.batch_weight_value.text(), "99.00")
         self.assertEqual(raw_weight_readings[-1], 99.0)
 
@@ -2990,7 +2981,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual(page.batch_number_value.text(), "0000")
         self.assertEqual(page.total_weight_value.text(), "100.00 g")
-        self.assertEqual(page.total_beans_value.text(), "2")
+        self.assertEqual(page.current_bean_count, 2)
         self.assertEqual(dashboard.batch_weight_value.text(), "100.00")
         self.assertEqual(raw_weight_readings[-1], 100.0)
         self.assertTrue(dashboard.system_running)
@@ -3006,7 +2997,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             b"Load Cell 1: 200.00 g\n"
         )
         self.assertEqual(page.total_weight_value.text(), "200.00 g")
-        self.assertEqual(page.total_beans_value.text(), "3")
+        self.assertEqual(page.current_bean_count, 3)
         self.assertTrue(dashboard.system_running)
         self.assertTrue(dashboard.ir_batch_active)
         self.assertNotIn("STOP_SAMPLE\n", commands)
