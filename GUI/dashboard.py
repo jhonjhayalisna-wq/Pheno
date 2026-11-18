@@ -1930,7 +1930,7 @@ class Dashboard(QWidget):
 
         self.cards = [
             self.create_card("TOTAL BATCH WEIGHT", "0", "grams"),
-            self.create_card("BEAN COUNT", "0", "Beans processed"),
+            self.create_card("ITEM COUNT", "0", "Beans processed"),
         ]
         batch_weight_value = self.cards[0].findChild(QLabel, "card_value")
         if batch_weight_value is None:

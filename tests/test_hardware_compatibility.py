@@ -234,7 +234,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         current_batch = window.bean_data_sheet_page
         current_batch_widgets = (
-            current_batch.findChild(QLabel, "bean_sheet_description"),
             current_batch.findChild(QLabel, "bean_sheet_summary_title"),
             current_batch.good_bean_count_title,
             current_batch.good_bean_count_value,
@@ -1137,6 +1136,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(
             dashboard.cards[0].findChild(QLabel, "card_title").text(),
             "TOTAL BATCH WEIGHT",
+        )
+        self.assertEqual(
+            dashboard.cards[1].findChild(QLabel, "card_title").text(),
+            "ITEM COUNT",
         )
 
         dashboard.update_batch_weight_display(None)
@@ -2535,6 +2538,15 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page = BeanDataSheetPage()
         page.show()
         self.application.processEvents()
+        self.assertEqual(
+            page.findChild(QLabel, "bean_sheet_title").text(),
+            "CURRENT BATCH SHEET",
+        )
+        self.assertIsNone(
+            page.findChild(QLabel, "bean_sheet_description")
+        )
+        self.assertEqual(page.view_summary_button.text(), "VIEW SUMMARY")
+        self.assertEqual(page.view_sensor_button.text(), "VIEW SENSOR")
         page.resize(700, 500)
         self.application.processEvents()
         self.assertEqual(
@@ -2561,13 +2573,13 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page.update_pricing_summary("85", "90", "₱ 1,250.00")
         self.assertEqual(
             page.actual_pns_score_label.text(),
-            "Philippine National Standard:",
+            "PHILIPPINE NATIONAL STANDARD:",
         )
         self.assertEqual(
             page.actual_moisture_score_label.text(),
-            "Moisture Content",
+            "MOISTURE CONTENT",
         )
-        self.assertEqual(page.actual_total_price_label.text(), "Total Price")
+        self.assertEqual(page.actual_total_price_label.text(), "TOTAL PRICE")
         self.assertEqual(page.actual_pns_score_value.text(), "85")
         self.assertEqual(page.actual_moisture_score_value.text(), "90")
         self.assertEqual(page.actual_total_price_value.text(), "₱ 1,250.00")
@@ -2577,9 +2589,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
             [score_layout.stretch(index) for index in range(4)],
             [1, 1, 1, 1],
         )
-        self.assertEqual(page.good_bean_count_title.text(), "No. of Good Beans")
-        self.assertEqual(page.bad_bean_count_title.text(), "No. of Bad Beans")
-        self.assertEqual(page.beans_title.text(), "Beans")
+        self.assertEqual(page.good_bean_count_title.text(), "GOOD BEANS")
+        self.assertEqual(page.bad_bean_count_title.text(), "BAD BEANS")
+        self.assertEqual(page.beans_title.text(), "BEAN COUNT")
         beans_card_layout = page.beans_title.parentWidget().layout()
         self.assertEqual(beans_card_layout.spacing(), 8)
         self.assertEqual(beans_card_layout.count(), 2)
@@ -3017,11 +3029,18 @@ class HardwareCompatibilityTests(unittest.TestCase):
             ("GOOD", "MOLDY", "SLATY", "GERMINATED"),
             start=1,
         ):
+            external_quality = {
+                "GOOD": "MOLDY",
+                "MOLDY": "GOOD",
+                "SLATY": "GERMINATED",
+                "GERMINATED": "BROKEN",
+            }[quality]
             page.update_dashboard_metrics(
                 {
                     "bean_id": f"bean-{index}",
                     "bean_count": index,
                     "quality": quality,
+                    "nir_classification": external_quality,
                 }
             )
 
@@ -3031,7 +3050,11 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         if apply_filter is None:
             self.fail("The Apply Filter dropdown should be present.")
-        self.assertEqual(apply_filter.text(), "Apply Filter:")
+        self.assertEqual(apply_filter.text(), "APPLY FILTER:")
+        self.assertEqual(
+            apply_filter.height(),
+            page.table_tabs["All Bean"].sizeHint().height(),
+        )
         filter_menu = apply_filter.menu()
         if filter_menu is None:
             self.fail("The Apply Filter dropdown should have a menu.")
@@ -3063,7 +3086,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             or internal_radio is None
         ):
             self.fail("The filter menu should show both quality groups.")
-        self.assertTrue(external_radio.isChecked())
+        self.assertFalse(external_radio.isChecked())
         self.assertFalse(internal_radio.isChecked())
         external_checkboxes = external_group.findChildren(
             QCheckBox,
@@ -3089,6 +3112,18 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "Broken",
             ],
         )
+        for checkbox in external_checkboxes + internal_checkboxes:
+            self.assertFalse(checkbox.isEnabled())
+        self.assertEqual(
+            external_group.findChild(
+                QFrame,
+                "bean_sheet_filter_group_header",
+            ).height(),
+            internal_group.findChild(
+                QFrame,
+                "bean_sheet_filter_group_header",
+            ).height(),
+        )
         filter_container = page.findChild(
             QWidget,
             "bean_sheet_quality_filter_container",
@@ -3109,34 +3144,44 @@ class HardwareCompatibilityTests(unittest.TestCase):
         QApplication.processEvents()
         self.assertTrue(filter_menu.isVisible())
 
-        internal_checkboxes[2].click()
+        internal_radio.click()
         QApplication.processEvents()
-        self.assertTrue(filter_menu.isVisible())
+        self.assertFalse(external_radio.isChecked())
+        self.assertTrue(internal_radio.isChecked())
+        for checkbox in internal_checkboxes:
+            self.assertTrue(checkbox.isEnabled())
+        for checkbox in external_checkboxes:
+            self.assertFalse(checkbox.isEnabled())
+        internal_checkboxes[0].click()
         self.assertEqual(page.data_table.rowCount(), 1)
-        self.assertEqual(page.data_table.item(0, 1).text(), "SLATY")
-        internal_checkboxes[2].click()
+        self.assertEqual(page.data_table.item(0, 1).text(), "GOOD")
+
+        external_radio.click()
         QApplication.processEvents()
-        self.assertTrue(filter_menu.isVisible())
+        self.assertTrue(external_radio.isChecked())
+        self.assertFalse(internal_radio.isChecked())
+        self.assertFalse(internal_checkboxes[0].isChecked())
+        for checkbox in external_checkboxes:
+            self.assertTrue(checkbox.isEnabled())
+        for checkbox in internal_checkboxes:
+            self.assertFalse(checkbox.isEnabled())
 
-        internal_checkboxes[1].click()
+        external_checkboxes[0].click()
         self.assertEqual(page.data_table.rowCount(), 1)
-        self.assertEqual(page.data_table.item(0, 1).text(), "MOLDY")
+        self.assertEqual(page.data_table.item(0, 3).text(), "GOOD")
 
-        external_checkboxes[1].click()
-        self.assertEqual(page.data_table.rowCount(), 2)
-        self.assertEqual(
-            {
-                page.data_table.item(row, 1).text()
-                for row in range(page.data_table.rowCount())
-            },
-            {"MOLDY", "GERMINATED"},
+        reset_button = page.findChild(
+            QPushButton,
+            "bean_sheet_reset_filter_button",
         )
-
-        internal_checkboxes[1].click()
-        self.assertEqual(page.data_table.rowCount(), 1)
-        self.assertEqual(page.data_table.item(0, 1).text(), "GERMINATED")
-
-        external_checkboxes[1].click()
+        self.assertIsNotNone(reset_button)
+        reset_button.click()
+        QApplication.processEvents()
+        self.assertFalse(external_radio.isChecked())
+        self.assertFalse(internal_radio.isChecked())
+        for checkbox in external_checkboxes + internal_checkboxes:
+            self.assertFalse(checkbox.isChecked())
+            self.assertFalse(checkbox.isEnabled())
         self.assertEqual(page.data_table.rowCount(), 4)
         page.show_table("Moisture Content Sample")
         self.assertTrue(filter_container.isHidden())
@@ -3195,6 +3240,12 @@ class HardwareCompatibilityTests(unittest.TestCase):
             )
             if checkbox.text() == "Moldy"
         )
+        internal_radio = page.findChild(
+            QRadioButton,
+            "bean_sheet_internal_filter_radio",
+        )
+        self.assertIsNotNone(internal_radio)
+        internal_radio.click()
         moldy_filter.setChecked(True)
 
         self.assertEqual(page.data_table.rowCount(), 1)

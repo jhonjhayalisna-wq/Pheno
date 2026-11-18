@@ -92,16 +92,16 @@ class BeanDataSheetPage(QWidget):
     TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
         "All Bean": (
             "Bean ID",
-            "External Classification",
-            "External Confidence",
-            "Internal Classification",
-            "Internal Confidence",
+            "EXTERNAL CLASSIFICATION",
+            "EXTERNAL CONFIDENCE",
+            "INTERNAL CLASSIFICATION",
+            "INTERNAL CONFIDENCE",
         ),
         "Moisture Content Sample": (
-            "Good Bean ID",
-            "Moisture Content",
-            "Moisture Grade",
-            "Moisture Score",
+            "GOOD BEAN ID",
+            "MOISTURE CONTENT",
+            "MOISTURE GRADE",
+            "MOISTURE SCORE",
         ),
     }
     TABLE_TAB_LABELS = {
@@ -129,6 +129,9 @@ class BeanDataSheetPage(QWidget):
         self.setObjectName("bean_data_sheet_page")
         self.bean_records: dict[tuple[int, str], dict[str, Any]] = {}
         self._quality_filter_checkboxes: list[QCheckBox] = []
+        self._quality_filter_groups: dict[str, list[QCheckBox]] = {}
+        self._quality_filter_group_radios: dict[str, QRadioButton] = {}
+        self._quality_filter_button_group: QButtonGroup | None = None
         self.batch_number = 0
         self.batch_started = False
         self.current_average_moisture: float | None = None
@@ -159,23 +162,17 @@ class BeanDataSheetPage(QWidget):
         layout.setContentsMargins(14, 12, 14, 14)
         layout.setSpacing(6)
 
-        heading = QLabel("Current Batch Sheet")
+        heading = QLabel("CURRENT BATCH SHEET")
         heading.setObjectName("bean_sheet_title")
         layout.addWidget(heading)
-
-        description = QLabel(
-            "Review bean samples, PNS grading, and moisture content data."
-        )
-        description.setObjectName("bean_sheet_description")
-        layout.addWidget(description)
 
         view_tabs_layout = QHBoxLayout()
         view_tabs_layout.setContentsMargins(0, 0, 0, 0)
         view_tabs_layout.addStretch()
         self.view_mode_button_group = QButtonGroup(self)
         self.view_mode_button_group.setExclusive(True)
-        self.view_summary_button = QPushButton("View Summary")
-        self.view_sensor_button = QPushButton("View Sensor")
+        self.view_summary_button = QPushButton("VIEW SUMMARY")
+        self.view_sensor_button = QPushButton("VIEW SENSOR")
         for index, button in enumerate(
             (self.view_summary_button, self.view_sensor_button)
         ):
@@ -211,14 +208,14 @@ class BeanDataSheetPage(QWidget):
         summary_grid.setHorizontalSpacing(8)
         summary_grid.setVerticalSpacing(6)
         summary_cards = (
-            (0, 0, "Batch ID", "batch_number_value"),
-            (0, 1, "Total Weight", "total_weight_value"),
-            (1, 1, "PNS Grade", "pns_grade_value"),
-            (2, 0, "Average Moisture Content", "average_moisture_content_value"),
+            (0, 0, "BATCH ID", "batch_number_value"),
+            (0, 1, "TOTAL WEIGHT", "total_weight_value"),
+            (1, 1, "PNS GRADE", "pns_grade_value"),
+            (2, 0, "AVERAGE MOISTURE CONTENT", "average_moisture_content_value"),
             (
                 2,
                 1,
-                "Moisture Content Classification",
+                "MOISTURE CONTENT CLASSIFICATION",
                 "moisture_classification_value",
             ),
         )
@@ -311,6 +308,8 @@ class BeanDataSheetPage(QWidget):
         filter_layout.setSpacing(10)
         filter_layout.addStretch()
         self.apply_filter_button = self._create_quality_filter_button()
+        all_beans_tab_height = self.table_tabs["All Bean"].sizeHint().height()
+        self.apply_filter_button.setFixedHeight(all_beans_tab_height)
         filter_layout.addWidget(self.apply_filter_button)
         filter_layout.addStretch()
         table_layout.addWidget(filter_container)
@@ -359,7 +358,7 @@ class BeanDataSheetPage(QWidget):
         card_layout.setContentsMargins(8, 6, 8, 6)
         card_layout.setSpacing(8)
 
-        self.beans_title = QLabel("Beans")
+        self.beans_title = QLabel("BEAN COUNT")
         self.beans_title.setObjectName("bean_sheet_summary_title")
         self.beans_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -371,7 +370,7 @@ class BeanDataSheetPage(QWidget):
         counts_layout = QHBoxLayout()
         counts_layout.setContentsMargins(0, 0, 0, 0)
         counts_layout.setSpacing(0)
-        self.good_bean_count_title = QLabel("No. of Good Beans")
+        self.good_bean_count_title = QLabel("GOOD BEANS")
         self.good_bean_count_title.setObjectName("bean_sheet_count_title")
         self.good_bean_count_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.good_bean_count_title.setWordWrap(True)
@@ -391,7 +390,7 @@ class BeanDataSheetPage(QWidget):
         divider.setFrameShadow(QFrame.Shadow.Plain)
         counts_layout.addWidget(divider)
 
-        self.bad_bean_count_title = QLabel("No. of Bad Beans")
+        self.bad_bean_count_title = QLabel("BAD BEANS")
         self.bad_bean_count_title.setObjectName("bean_sheet_count_title")
         self.bad_bean_count_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.bad_bean_count_title.setWordWrap(True)
@@ -422,7 +421,7 @@ class BeanDataSheetPage(QWidget):
         panel_layout.setContentsMargins(12, 10, 12, 10)
         panel_layout.setSpacing(0)
 
-        title = QLabel("Actual Batch Score")
+        title = QLabel("ACTUAL BATCH SCORE")
         title.setObjectName("bean_sheet_score_title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setWordWrap(True)
@@ -431,7 +430,7 @@ class BeanDataSheetPage(QWidget):
         pns_section = QWidget()
         pns_layout = QVBoxLayout(pns_section)
         pns_layout.setContentsMargins(0, 0, 0, 0)
-        self.actual_pns_score_label = QLabel("Philippine National Standard")
+        self.actual_pns_score_label = QLabel("PHILIPPINE NATIONAL STANDARD:")
         self.actual_pns_score_label.setObjectName("bean_sheet_score_label")
         self.actual_pns_score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.actual_pns_score_label.setWordWrap(True)
@@ -445,7 +444,7 @@ class BeanDataSheetPage(QWidget):
         moisture_section = QWidget()
         moisture_layout = QVBoxLayout(moisture_section)
         moisture_layout.setContentsMargins(0, 0, 0, 0)
-        self.actual_moisture_score_label = QLabel("Moisture Content")
+        self.actual_moisture_score_label = QLabel("MOISTURE CONTENT")
         self.actual_moisture_score_label.setObjectName(
             "bean_sheet_score_label"
         )
@@ -464,7 +463,7 @@ class BeanDataSheetPage(QWidget):
         price_section = QWidget()
         price_layout = QVBoxLayout(price_section)
         price_layout.setContentsMargins(0, 0, 0, 0)
-        self.actual_total_price_label = QLabel("Total Price")
+        self.actual_total_price_label = QLabel("TOTAL PRICE")
         self.actual_total_price_label.setObjectName("bean_sheet_price_title")
         self.actual_total_price_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         price_layout.addWidget(self.actual_total_price_label, 1)
@@ -519,7 +518,7 @@ class BeanDataSheetPage(QWidget):
             2,
         )
         for column, text in enumerate(
-            ("Classification", "Confidence", "Classification", "Confidence"),
+            ("CLASSIFICATION", "CONFIDENCE", "CLASSIFICATION", "CONFIDENCE"),
             start=1,
         ):
             grid.addWidget(
@@ -537,9 +536,8 @@ class BeanDataSheetPage(QWidget):
                 border: 1px solid #C9D3CE;
                 border-radius: 10px;
                 color: #12402A;
-                font-size: 16px;
+                font-size: 25px;
                 font-weight: 700;
-                min-height: 40px;
                 padding: 0 16px;
             }
             QToolButton#bean_sheet_apply_filter_button:hover {
@@ -588,18 +586,54 @@ class BeanDataSheetPage(QWidget):
                 background-color: #E3F3EA;
                 border: 1px solid #BFE0CC;
                 border-radius: 9px;
-                min-height: 38px;
+                min-height: 44px;
+                max-height: 44px;
                 margin-bottom: 6px;
             }
-            QLabel#bean_sheet_filter_group_title {
+            QFrame#bean_sheet_filter_group_header[disabled_filter_group="true"] {
+                background-color: #F1F3F2;
+                border-color: #D8DEDB;
+            }
+            QPushButton#bean_sheet_reset_filter_button {
                 color: #12402A;
-                font-size: 16px;
+                background-color: #E3F3EA;
+                border: 1px solid #BFE0CC;
+                border-radius: 8px;
+                font-size: 18px;
                 font-weight: 700;
+                min-height: 36px;
+                padding: 6px 16px;
+            }
+            QRadioButton#bean_sheet_external_filter_radio,
+            QRadioButton#bean_sheet_internal_filter_radio {
+                color: #12402A;
+                font-size: 30px;
+                font-weight: 700;
+                background-color: transparent;
+                border: none;
+                padding: 8px 12px;
+            }
+            QRadioButton#bean_sheet_external_filter_radio::indicator,
+            QRadioButton#bean_sheet_internal_filter_radio::indicator {
+                width: 0px;
+                height: 0px;
+                border: none;
+            }
+            QRadioButton#bean_sheet_external_filter_radio:checked,
+            QRadioButton#bean_sheet_internal_filter_radio:checked {
+                color: #12402A;
+                background-color: #CFE8DA;
+                border: 2px solid #2E7D50;
+                border-radius: 9px;
+            }
+            QRadioButton#bean_sheet_external_filter_radio[inactive="true"],
+            QRadioButton#bean_sheet_internal_filter_radio[inactive="true"] {
+                color: #98A39D;
             }
             QCheckBox#bean_sheet_quality_filter_checkbox {
                 color: #12402A;
-                font-size: 15px;
-                min-height: 36px;
+                font-size: 30px;
+                min-height: 44px;
                 padding: 0 0 0 10px;
                 spacing: 12px;
                 border-radius: 8px;
@@ -611,9 +645,13 @@ class BeanDataSheetPage(QWidget):
                 background-color: #E8F4EC;
                 font-weight: 600;
             }
+            QCheckBox#bean_sheet_quality_filter_checkbox:disabled {
+                color: #98A39D;
+                background-color: #F2F4F3;
+            }
             QCheckBox#bean_sheet_quality_filter_checkbox::indicator {
-                width: 20px;
-                height: 20px;
+                width: 30px;
+                height: 30px;
                 border: 1.5px solid #7F9A8C;
                 border-radius: 5px;
                 background-color: #FFFFFF;
@@ -631,10 +669,10 @@ class BeanDataSheetPage(QWidget):
     def _create_quality_filter_button(self) -> QToolButton:
         button = QToolButton()
         button.setObjectName("bean_sheet_apply_filter_button")
-        button.setText("Apply Filter:")
+        button.setText("APPLY FILTER:")
         button.setAccessibleName("Apply quality filter")
         button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        button.setMinimumSize(190, 42)
+        button.setMinimumWidth(190)
         button.setStyleSheet(self._filter_button_stylesheet())
 
         menu = _QualityFilterMenu(button)
@@ -656,12 +694,17 @@ class BeanDataSheetPage(QWidget):
         panel = QFrame()
         panel.setObjectName("bean_sheet_quality_filter_panel")
         panel.setMinimumSize(520, 330)
-        panel_layout = QHBoxLayout(panel)
+        panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(14, 14, 14, 14)
         panel_layout.setSpacing(14)
 
+        groups_layout = QHBoxLayout()
+        groups_layout.setContentsMargins(0, 0, 0, 0)
+        groups_layout.setSpacing(14)
+
         group_selector = QButtonGroup(panel)
         group_selector.setExclusive(True)
+        self._quality_filter_button_group = group_selector
         external_group = self._create_quality_filter_group(
             "External",
             self.EXTERNAL_QUALITY_FILTERS,
@@ -672,14 +715,24 @@ class BeanDataSheetPage(QWidget):
             self.INTERNAL_QUALITY_FILTERS,
             group_selector,
         )
-        panel_layout.addWidget(internal_group, 1)
+        groups_layout.addWidget(internal_group, 1)
 
         divider = QFrame()
         divider.setObjectName("bean_sheet_filter_divider")
         divider.setFrameShape(QFrame.Shape.VLine)
         divider.setFrameShadow(QFrame.Shadow.Sunken)
-        panel_layout.addWidget(divider)
-        panel_layout.addWidget(external_group, 1)
+        groups_layout.addWidget(divider)
+        groups_layout.addWidget(external_group, 1)
+        panel_layout.addLayout(groups_layout, 1)
+
+        reset_button = QPushButton("RESET FILTER")
+        reset_button.setObjectName("bean_sheet_reset_filter_button")
+        reset_button.clicked.connect(self._reset_quality_filters)
+        reset_layout = QHBoxLayout()
+        reset_layout.setContentsMargins(0, 0, 0, 0)
+        reset_layout.addStretch()
+        reset_layout.addWidget(reset_button)
+        panel_layout.addLayout(reset_layout)
         return panel
 
     def _create_quality_filter_group(
@@ -697,41 +750,118 @@ class BeanDataSheetPage(QWidget):
 
         header = QFrame()
         header.setObjectName("bean_sheet_filter_group_header")
+        header.setFixedHeight(44)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(12, 8, 12, 8)
-        heading = QLabel(title)
-        heading.setObjectName("bean_sheet_filter_group_title")
-        header_layout.addWidget(heading)
-        header_layout.addStretch()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(0)
 
         radio = QRadioButton()
         radio.setObjectName(f"bean_sheet_{group_name}_filter_radio")
+        radio.setText(title.upper())
         radio.setAccessibleName(f"{title} filter group")
+        radio.setFixedHeight(44)
+        radio.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         group_selector.addButton(radio)
-        if title == "External":
-            radio.setChecked(True)
+        radio.toggled.connect(
+            lambda checked=False, selected_title=title:
+            self._on_quality_filter_group_toggled(selected_title, checked)
+        )
+        self._quality_filter_group_radios[title] = radio
         header_layout.addWidget(radio)
         group_layout.addWidget(header)
 
+        group_checkboxes: list[QCheckBox] = []
         for category in categories:
             checkbox = QCheckBox(category)
             checkbox.setObjectName("bean_sheet_quality_filter_checkbox")
+            checkbox.setProperty("quality_filter_group", title)
             checkbox.setAccessibleName(
                 f"{title} {category} filter"
             )
             checkbox.toggled.connect(self._refresh_quality_filter)
             self._quality_filter_checkboxes.append(checkbox)
+            group_checkboxes.append(checkbox)
             group_layout.addWidget(checkbox)
+        self._quality_filter_groups[title] = group_checkboxes
         group_layout.addStretch()
+        self._apply_quality_filter_group_state()
         return group
+
+    def _on_quality_filter_group_toggled(
+        self,
+        title: str,
+        checked: bool,
+    ) -> None:
+        self._apply_quality_filter_group_state()
+        self._refresh_quality_filter()
+
+    def _active_quality_filter_group(self) -> str | None:
+        for title, radio in self._quality_filter_group_radios.items():
+            if radio.isChecked():
+                return title
+        return None
+
+    def _apply_quality_filter_group_state(self) -> None:
+        active_group = self._active_quality_filter_group()
+        enabled_group = active_group
+        for group_name, checkboxes in self._quality_filter_groups.items():
+            is_disabled = group_name != enabled_group
+            group = self.findChild(
+                QFrame,
+                f"bean_sheet_{group_name.casefold()}_filter_group",
+            )
+            if group is not None:
+                header = group.findChild(
+                    QFrame,
+                    "bean_sheet_filter_group_header",
+                )
+                if header is not None:
+                    header.setProperty(
+                        "disabled_filter_group",
+                        is_disabled,
+                    )
+                    header.style().unpolish(header)
+                    header.style().polish(header)
+            radio = self._quality_filter_group_radios.get(group_name)
+            if radio is not None:
+                radio.setProperty("inactive", is_disabled)
+                radio.style().unpolish(radio)
+                radio.style().polish(radio)
+            for checkbox in checkboxes:
+                if is_disabled:
+                    checkbox.setChecked(False)
+                checkbox.setEnabled(not is_disabled)
+                checkbox.style().unpolish(checkbox)
+                checkbox.style().polish(checkbox)
+
+    def _reset_quality_filters(self) -> None:
+        if self._quality_filter_button_group is not None:
+            self._quality_filter_button_group.setExclusive(False)
+        for radio in self._quality_filter_group_radios.values():
+            radio.setChecked(False)
+        if self._quality_filter_button_group is not None:
+            self._quality_filter_button_group.setExclusive(True)
+        for checkbox in self._quality_filter_checkboxes:
+            checkbox.setChecked(False)
+        self._apply_quality_filter_group_state()
+        self._refresh_quality_filter()
 
     def _refresh_quality_filter(self) -> None:
         self._populate_table(self.current_table_title)
 
     def _selected_quality_filters(self) -> set[str]:
         selected: set[str] = set()
+        active_group = self._active_quality_filter_group()
+        if active_group is None:
+            return selected
         for checkbox in self._quality_filter_checkboxes:
             if not checkbox.isChecked():
+                continue
+            checkbox_group = checkbox.property("quality_filter_group")
+            if checkbox_group != active_group:
                 continue
             category = self._filter_category_name(checkbox.text())
             if category is not None:
@@ -1068,12 +1198,30 @@ class BeanDataSheetPage(QWidget):
         if title == "All Bean":
             rows = self._bean_sample_rows()
             if selected_categories:
-                rows = [
-                    row
-                    for row in rows
-                    if self._filter_category_name(row[1])
-                    in selected_categories
-                ]
+                active_group = self._active_quality_filter_group()
+                column_index = (
+                    3 if active_group == "External"
+                    else 1 if active_group == "Internal"
+                    else None
+                )
+                if column_index is not None:
+                    rows = [
+                        row
+                        for row in rows
+                        if self._filter_category_name(row[column_index])
+                        in selected_categories
+                    ]
+                else:
+                    rows = [
+                        row
+                        for row in rows
+                        if (
+                            self._filter_category_name(row[1])
+                            in selected_categories
+                            or self._filter_category_name(row[3])
+                            in selected_categories
+                        )
+                    ]
         elif title == "Moisture Content Sample":
             rows = [
                 self._moisture_row(record)
