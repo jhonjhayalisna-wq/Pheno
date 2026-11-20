@@ -1135,11 +1135,19 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(dashboard.batch_weight_value.text(), "1275.00")
         self.assertEqual(
             dashboard.cards[0].findChild(QLabel, "card_title").text(),
-            "TOTAL BATCH WEIGHT",
+            "BATCH WEIGHT",
         )
         self.assertEqual(
             dashboard.cards[1].findChild(QLabel, "card_title").text(),
             "ITEM COUNT",
+        )
+        self.assertEqual(
+            dashboard.cards[2].findChild(QLabel, "card_title").text(),
+            "GOOD WEIGHT",
+        )
+        self.assertEqual(
+            dashboard.cards[3].findChild(QLabel, "card_title").text(),
+            "BAD WEIGHT",
         )
 
         dashboard.update_batch_weight_display(None)

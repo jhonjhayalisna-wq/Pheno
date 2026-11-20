@@ -239,6 +239,10 @@ class Dashboard(QWidget):
         self.quality_summary_value.hide()
         self.good_bean_count = 0
         self.not_good_bean_count = 0
+        self.good_batch_weight_grams = 0.0
+        self.not_good_batch_weight_grams = 0.0
+        self.good_weight_grams = 0.0
+        self.not_good_weight_grams = 0.0
         self.nir_sample_spectra = []
         self.nir_pending_spectrum = None
         self.collecting_nir_scans = False
@@ -597,6 +601,8 @@ class Dashboard(QWidget):
             self.total_bean_count = 0
             self.good_bean_count = 0
             self.not_good_bean_count = 0
+            self.good_batch_weight_grams = 0.0
+            self.not_good_batch_weight_grams = 0.0
             self.bean_rotation_active = False
             self.awaiting_bean_classification = False
             self.best_rotation_quality = None
@@ -646,7 +652,10 @@ class Dashboard(QWidget):
         self.bean_id_sequence = 0
         self.good_bean_count = 0
         self.not_good_bean_count = 0
+        self.good_batch_weight_grams = 0.0
+        self.not_good_batch_weight_grams = 0.0
         self.total_beans_value.setText("0")
+        self.update_quality_totals_display()
         self.system_running = True
         self.set_ir_sample_active(True)
         self.start_camera()
@@ -920,16 +929,23 @@ class Dashboard(QWidget):
     ) -> None:
         if batch_weight_grams is None:
             self.batch_weight_value.setText("0")
+            self.current_batch_weight_grams = 0.0
+            self.update_quality_totals_display()
             return
+        self.current_batch_weight_grams = max(0.0, batch_weight_grams)
         self.batch_weight_value.setText(f"{batch_weight_grams:.2f}")
+        self.update_quality_totals_display()
 
     def update_batch_weight_display(self, weight_kg: float | None) -> None:
         if weight_kg is None:
             self.batch_weight_value.setText("0")
+            self.current_batch_weight_grams = 0.0
+            self.update_quality_totals_display()
             return
-        self.batch_weight_value.setText(
-            f"{weight_kg * self.GRAMS_PER_KILOGRAM:.2f}"
-        )
+        weight_grams = weight_kg * self.GRAMS_PER_KILOGRAM
+        self.current_batch_weight_grams = max(0.0, weight_grams)
+        self.batch_weight_value.setText(f"{weight_grams:.2f}")
+        self.update_quality_totals_display()
 
     def update_current_seed_id(self, bean_number: int) -> None:
         if bean_number <= 0:
@@ -996,6 +1012,8 @@ class Dashboard(QWidget):
             "bean_count": self.total_bean_count,
             "good_bean_count": self.good_bean_count,
             "not_good_bean_count": self.not_good_bean_count,
+            "good_weight_grams": self.good_batch_weight_grams,
+            "not_good_weight_grams": self.not_good_batch_weight_grams,
             "batch_number": self.current_batch_number,
             "batch_weight_grams": self.current_batch_weight_grams,
             "cumulative_weight_grams": (
@@ -1534,7 +1552,24 @@ class Dashboard(QWidget):
         return quality
 
     def update_quality_totals_display(self) -> None:
-        self.quality_summary_value.setText("Classification")
+        total_count = self.good_bean_count + self.not_good_bean_count
+        batch_weight = self.current_batch_weight_grams
+
+        if total_count > 0:
+            self.good_batch_weight_grams = (
+                batch_weight * self.good_bean_count / total_count
+            )
+            self.not_good_batch_weight_grams = (
+                batch_weight * self.not_good_bean_count / total_count
+            )
+        else:
+            self.good_batch_weight_grams = 0.0
+            self.not_good_batch_weight_grams = 0.0
+
+        self.good_weight_value.setText(f"{self.good_batch_weight_grams:.2f}")
+        self.not_good_weight_value.setText(
+            f"{self.not_good_batch_weight_grams:.2f}"
+        )
 
     def _send_bean_sort_command(self, quality: str) -> bool:
         if not self.awaiting_bean_classification:
@@ -1978,10 +2013,25 @@ class Dashboard(QWidget):
             QSizePolicy.Policy.Fixed,
         )
 
-        heading_layout = QVBoxLayout()
+        heading_layout = QHBoxLayout()
         heading_layout.setContentsMargins(0, 0, 0, 0)
-        heading_layout.setSpacing(4)
+        heading_layout.setSpacing(8)
         heading_layout.addWidget(title)
+        heading_layout.addStretch()
+
+        start_button = AnimatedButton("START SYSTEM")
+        start_button.setObjectName("start_button")
+        self.start_system_button = start_button
+
+        stop_button = AnimatedButton("STOP SYSTEM")
+        stop_button.setObjectName("stop_button")
+        self.stop_system_button = stop_button
+        stop_button.setEnabled(False)
+        start_button.setMinimumWidth(150)
+        stop_button.setMinimumWidth(150)
+
+        heading_layout.addWidget(start_button)
+        heading_layout.addWidget(stop_button)
 
         # --------------------------------
         # STATUS CARDS
@@ -1992,25 +2042,41 @@ class Dashboard(QWidget):
         self.cards_layout.setVerticalSpacing(12)
 
         self.cards = [
-            self.create_card("TOTAL BATCH WEIGHT", "0", "grams"),
+            self.create_card("BATCH WEIGHT", "0", "grams"),
             self.create_card("ITEM COUNT", "0", "Beans processed"),
+            self.create_card("GOOD WEIGHT", "0", "grams"),
+            self.create_card("BAD WEIGHT", "0", "grams"),
         ]
         batch_weight_value = self.cards[0].findChild(QLabel, "card_value")
         if batch_weight_value is None:
             raise RuntimeError("The batch-weight card has no value label.")
         self.batch_weight_value = batch_weight_value
 
-        total_beans_value = self.cards[-1].findChild(QLabel, "card_value")
+        total_beans_value = self.cards[1].findChild(QLabel, "card_value")
         if total_beans_value is None:
             raise RuntimeError("The total-beans card has no value label.")
         self.total_beans_value = total_beans_value
+
+        good_weight_value = self.cards[2].findChild(QLabel, "card_value")
+        if good_weight_value is None:
+            raise RuntimeError("The good-weight card has no value label.")
+        self.good_weight_value = good_weight_value
+
+        not_good_weight_value = self.cards[3].findChild(QLabel, "card_value")
+        if not_good_weight_value is None:
+            raise RuntimeError("The not-good-weight card has no value label.")
+        self.not_good_weight_value = not_good_weight_value
         self.card_columns = 1
         self.reflow_cards(self.card_columns)
 
         heading_cards_layout = QVBoxLayout()
         heading_cards_layout.setContentsMargins(0, 0, 0, 0)
-        heading_cards_layout.setSpacing(8)
+        heading_cards_layout.setSpacing(20)
         heading_cards_layout.addLayout(heading_layout)
+
+        current_batch_label = QLabel("CURRENT BATCH • LIVE")
+        current_batch_label.setObjectName("current_batch_live_label")
+        heading_cards_layout.addWidget(current_batch_label)
         heading_cards_layout.addLayout(self.cards_layout)
         main_layout.addLayout(heading_cards_layout)
 
@@ -2063,28 +2129,6 @@ class Dashboard(QWidget):
 
         main_layout.addLayout(middle_layout)
 
-        # --------------------------------
-        # CONTROL BUTTONS
-        # --------------------------------
-
-        button_layout = QHBoxLayout()
-
-        start_button = AnimatedButton("Start System")
-        start_button.setObjectName("start_button")
-        self.start_system_button = start_button
-
-        stop_button = AnimatedButton("Stop System")
-        stop_button.setObjectName("stop_button")
-        self.stop_system_button = stop_button
-        stop_button.setEnabled(False)
-        start_button.setMinimumWidth(150)
-        stop_button.setMinimumWidth(150)
-
-        button_layout.addStretch()
-        button_layout.addWidget(start_button)
-        button_layout.addWidget(stop_button)
-
-        main_layout.addLayout(button_layout)
         self.batch_status_value = QLabel("")
         self.batch_status_value.setObjectName("batch_status_value")
         self.batch_status_value.setAlignment(Qt.AlignmentFlag.AlignCenter)

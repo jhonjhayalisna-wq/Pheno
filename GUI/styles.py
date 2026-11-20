@@ -1207,6 +1207,12 @@ QPushButton:checked {
     font-weight: bold;
 }
 
+QLabel#current_batch_live_label {
+    color: #68796f;
+    font-size: 14px;
+    font-weight: 700;
+}
+
 #system_status {
     color: #c0392b;
     font-weight: bold;
