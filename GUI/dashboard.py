@@ -59,9 +59,17 @@ from PySide6.QtWidgets import (
     QBoxLayout,
     QComboBox,
     QPushButton,
+    QProgressBar,
 )
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, QTimer, Signal
-from PySide6.QtGui import QCloseEvent, QImage, QPixmap, QResizeEvent
+from PySide6.QtGui import (
+    QCloseEvent,
+    QColor,
+    QImage,
+    QPainter,
+    QPixmap,
+    QResizeEvent,
+)
 from PySide6.QtMultimedia import QMediaDevices
 from .animated_button import AnimatedButton
 from .nir_classifier import (
@@ -133,6 +141,67 @@ class _InferenceTask(QRunnable):
                 None,
                 f"AI inference failed: {exc}",
             )
+
+
+class GradeDistributionWidget(QWidget):
+    def __init__(self) -> None:
+        super().__init__()
+        self.grade_counts = {"A": 0, "B": 0, "C": 0}
+        self.setFixedSize(230, 230)
+
+    def set_counts(self, counts: dict[str, int]) -> None:
+        self.grade_counts = {
+            grade: max(0, int(counts.get(grade, 0)))
+            for grade in ("A", "B", "C")
+        }
+        self.update()
+
+    def paintEvent(self, event: Any) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), QColor("#ffffff"))
+
+        total = sum(self.grade_counts.values())
+        colors = (
+            QColor("#43845a"),
+            QColor("#98cda3"),
+            QColor("#f0a54a"),
+        )
+        rect = self.rect().adjusted(8, 8, -8, -8)
+
+        if total <= 0:
+            painter.setBrush(QColor("#e4ebe7"))
+            painter.setPen(QColor("#e4ebe7"))
+            painter.drawEllipse(rect)
+        else:
+            start_angle = 90 * 16
+            for grade, color in zip(("A", "B", "C"), colors):
+                count = self.grade_counts[grade]
+                if count <= 0:
+                    continue
+                span_angle = -int(count * 360 * 16 / total)
+                painter.setBrush(color)
+                painter.setPen(QColor("#ffffff"))
+                painter.drawPie(rect, start_angle, span_angle)
+                start_angle += span_angle
+
+        center = rect.adjusted(48, 48, -48, -48)
+        painter.setBrush(QColor("#ffffff"))
+        painter.setPen(QColor("#ffffff"))
+        painter.drawEllipse(center)
+
+        painter.setPen(QColor("#173f2a"))
+        painter.setFont(painter.font())
+        font = painter.font()
+        font.setPointSize(22)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(
+            center,
+            Qt.AlignmentFlag.AlignCenter,
+            str(total),
+        )
+        painter.end()
 
 
 class Dashboard(QWidget):
@@ -254,6 +323,16 @@ class Dashboard(QWidget):
         self.total_pns_score = 0
         self.total_value = 0.0
         self.current_bean_foreign_object = False
+        self.grade_counts = {"A": 0, "B": 0, "C": 0}
+        self.defect_counts = {
+            "MOLDY": 0,
+            "SLATY": 0,
+            "GERMINATED": 0,
+            "INSECT-DAMAGED": 0,
+            "FLAT": 0,
+            "BROKEN": 0,
+            "DOUBLE": 0,
+        }
         self.nir_sample_spectra = []
         self.nir_pending_spectrum = None
         self.collecting_nir_scans = False
@@ -1644,16 +1723,36 @@ class Dashboard(QWidget):
             else 0.0
         )
 
-        self.batches_processed_value.setText(str(self.batches_processed))
-        self.total_weight_value.setText(
-            f"{self.total_batch_weight_grams:.2f}"
+        labels: tuple[tuple[QLabel | None, str], ...] = (
+            (self.batches_processed_value, str(self.batches_processed)),
+            (self.total_weight_value, f"{self.total_batch_weight_grams:.2f}"),
+            (self.total_item_count_value, str(total_items)),
+            (self.good_bean_rate_value, f"{good_rate:.2f}%"),
+            (self.total_value_value, f"₱ {self.total_value:,.2f}"),
+            (self.avg_pns_score_value, f"{avg_pns_score:.2f}"),
+            (self.avg_moisture_value, f"{avg_moisture:.2f}%"),
+            (self.foreign_objects_value, str(self.total_foreign_objects)),
         )
-        self.total_item_count_value.setText(str(total_items))
-        self.good_bean_rate_value.setText(f"{good_rate:.2f}%")
-        self.total_value_value.setText(f"₱ {self.total_value:,.2f}")
-        self.avg_pns_score_value.setText(f"{avg_pns_score:.2f}")
-        self.avg_moisture_value.setText(f"{avg_moisture:.2f}%")
-        self.foreign_objects_value.setText(str(self.total_foreign_objects))
+        for label, text in labels:
+            if label is not None:
+                label.setText(text)
+
+        self.grade_distribution.set_counts(self.grade_counts)
+        for grade in ("A", "B", "C"):
+            count = self.grade_counts[grade]
+            self.grade_legend_labels[grade].setText(
+                f"Grade {grade} - {count}"
+            )
+
+        defect_max = max(self.defect_counts.values(), default=0)
+        for key, bar in self.defect_progress_bars.items():
+            count = self.defect_counts[key]
+            bar.setValue(
+                int(count * 100 / defect_max)
+                if defect_max > 0
+                else 0
+            )
+            self.defect_count_labels[key].setText(str(count))
 
     def _send_bean_sort_command(self, quality: str) -> bool:
         if not self.awaiting_bean_classification:
@@ -1679,8 +1778,14 @@ class Dashboard(QWidget):
         if is_good:
             self.good_bean_count += 1
             self.total_good_bean_count += 1
+            self.grade_counts["A"] += 1
         else:
             self.not_good_bean_count += 1
+            if quality in self.defect_counts:
+                self.defect_counts[quality] += 1
+                self.grade_counts["B"] += 1
+            elif quality != "UNDEFINED":
+                self.grade_counts["C"] += 1
         self.total_item_count += 1
         if self.current_bean_foreign_object:
             self.total_foreign_objects += 1
@@ -1791,6 +1896,8 @@ class Dashboard(QWidget):
                 0,
                 self.total_good_bean_count - 1,
             )
+            self.grade_counts["A"] = max(0, self.grade_counts["A"] - 1)
+            self.grade_counts["B"] += 1
             self.update_quality_totals_display()
             self.update_all_batches_totals_display()
             self.emit_bean_data_update()
@@ -1839,11 +1946,13 @@ class Dashboard(QWidget):
         self.ai_model = model
         self.ai_model_error = ""
         model_names = getattr(model, "names", {})
-        if isinstance(model_names, dict):
-            class_names = tuple(model_names.values())
+        if isinstance(model_names, Mapping):
+            class_names: tuple[str, ...] = tuple(
+                str(name) for name in model_names.values()
+            )
         else:
             try:
-                class_names = tuple(model_names)
+                class_names = tuple(str(name) for name in model_names)
             except TypeError:
                 class_names = ()
         present_categories = {
@@ -1860,7 +1969,7 @@ class Dashboard(QWidget):
             is_foreign_object_category(class_name)
             for class_name in class_names
         )
-        warning_parts = []
+        warning_parts: list[str] = []
         if missing_categories:
             warning_parts.append(
                 "missing bean classes: " + ", ".join(missing_categories)
@@ -2080,13 +2189,8 @@ class Dashboard(QWidget):
             value_label.setProperty("class", "card_value")
             value_label.setObjectName("card_value")
 
-        unit_label = QLabel(unit)
-        unit_label.setProperty("class", "card_unit")
-        unit_label.setObjectName("card_unit")
-
         layout.addWidget(title_label)
         layout.addWidget(value_label)
-        layout.addWidget(unit_label)
 
         return card
 
@@ -2231,6 +2335,97 @@ class Dashboard(QWidget):
         self.totals_card_columns = 1
         self.reflow_totals_cards(self.totals_card_columns)
         heading_cards_layout.addLayout(self.totals_cards_layout)
+
+        breakdown_layout = QHBoxLayout()
+        breakdown_layout.setContentsMargins(0, 0, 0, 0)
+        breakdown_layout.setSpacing(12)
+
+        grade_panel = QFrame()
+        grade_panel.setObjectName("dashboard_breakdown_panel")
+        grade_layout = QVBoxLayout(grade_panel)
+        grade_layout.setContentsMargins(18, 14, 18, 14)
+        grade_layout.setSpacing(8)
+        grade_title = QLabel("GRADE DISTRIBUTION")
+        grade_title.setObjectName("dashboard_breakdown_title")
+        grade_layout.addWidget(grade_title)
+
+        grade_content = QHBoxLayout()
+        grade_content.setSpacing(18)
+        self.grade_distribution = GradeDistributionWidget()
+        grade_content.addStretch(1)
+        grade_content.addWidget(self.grade_distribution)
+        grade_content.addStretch(1)
+
+        grade_legend = QVBoxLayout()
+        grade_legend.setSpacing(8)
+        self.grade_legend_labels: dict[str, QLabel] = {}
+        grade_colors = {"A": "#43845a", "B": "#98cda3", "C": "#f0a54a"}
+        for grade in ("A", "B", "C"):
+            grade_row = QHBoxLayout()
+            swatch = QLabel()
+            swatch.setFixedSize(12, 12)
+            swatch.setStyleSheet(
+                f"background-color: {grade_colors[grade]}; border-radius: 2px;"
+            )
+            grade_label = QLabel(f"Grade {grade} - 0")
+            grade_label.setObjectName("dashboard_breakdown_legend")
+            self.grade_legend_labels[grade] = grade_label
+            grade_row.addWidget(swatch)
+            grade_row.addWidget(grade_label)
+            grade_row.addStretch()
+            grade_legend.addLayout(grade_row)
+        grade_legend.addStretch()
+        grade_content.addLayout(grade_legend)
+        grade_layout.addLayout(grade_content)
+        breakdown_layout.addWidget(grade_panel, 1)
+
+        defect_panel = QFrame()
+        defect_panel.setObjectName("dashboard_breakdown_panel")
+        defect_layout = QVBoxLayout(defect_panel)
+        defect_layout.setContentsMargins(18, 14, 18, 14)
+        defect_layout.setSpacing(6)
+        defect_title = QLabel("DEFECT BREAKDOWN - ALL BATCHES")
+        defect_title.setObjectName("dashboard_breakdown_title")
+        defect_layout.addWidget(defect_title)
+
+        defect_names = (
+            ("MOLDY", "Moldy"),
+            ("SLATY", "Slaty"),
+            ("GERMINATED", "Germinated"),
+            ("INSECT-DAMAGED", "Insect-damaged"),
+            ("FLAT", "Flat"),
+            ("BROKEN", "Broken"),
+            ("DOUBLE", "Double"),
+        )
+        self.defect_progress_bars: dict[str, QProgressBar] = {}
+        self.defect_count_labels: dict[str, QLabel] = {}
+        for key, title_text in defect_names:
+            row = QHBoxLayout()
+            row.setSpacing(10)
+            name_label = QLabel(title_text)
+            name_label.setObjectName("dashboard_defect_name")
+            name_label.setMinimumWidth(112)
+            bar = QProgressBar()
+            bar.setObjectName("dashboard_defect_bar")
+            bar.setRange(0, 100)
+            bar.setValue(0)
+            bar.setTextVisible(False)
+            bar.setMinimumHeight(14)
+            count_label = QLabel("0")
+            count_label.setObjectName("dashboard_defect_count")
+            count_label.setMinimumWidth(45)
+            count_label.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            row.addWidget(name_label)
+            row.addWidget(bar, 1)
+            row.addWidget(count_label)
+            defect_layout.addLayout(row)
+            self.defect_progress_bars[key] = bar
+            self.defect_count_labels[key] = count_label
+        breakdown_layout.addWidget(defect_panel, 1)
+
+        heading_cards_layout.addLayout(breakdown_layout)
         main_layout.addLayout(heading_cards_layout)
 
         # --------------------------------

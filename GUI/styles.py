@@ -1219,6 +1219,37 @@ QLabel#all_batches_totals_label {
     font-weight: 700;
 }
 
+QFrame#dashboard_breakdown_panel {
+    background-color: #ffffff;
+    border: 1px solid #dce5df;
+    border-radius: 14px;
+    min-height: 260px;
+}
+
+QLabel#dashboard_breakdown_title {
+    color: #173f2a;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+QLabel#dashboard_breakdown_legend,
+QLabel#dashboard_defect_name,
+QLabel#dashboard_defect_count {
+    color: #173f2a;
+    font-size: 14px;
+}
+
+QProgressBar#dashboard_defect_bar {
+    background-color: #eef2ef;
+    border: none;
+    border-radius: 7px;
+}
+
+QProgressBar#dashboard_defect_bar::chunk {
+    background-color: #43845a;
+    border-radius: 7px;
+}
+
 #system_status {
     color: #c0392b;
     font-weight: bold;
