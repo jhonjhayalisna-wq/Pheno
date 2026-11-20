@@ -34,6 +34,7 @@ from .quality import (
     QUALITY_CATEGORIES,
     is_foreign_object_category,
     normalize_quality_category,
+    pns_grade_from_weighted_count,
 )
 
 if TYPE_CHECKING:
@@ -243,6 +244,16 @@ class Dashboard(QWidget):
         self.not_good_batch_weight_grams = 0.0
         self.good_weight_grams = 0.0
         self.not_good_weight_grams = 0.0
+        self.batches_processed = 0
+        self.total_batch_weight_grams = 0.0
+        self.total_item_count = 0
+        self.total_good_bean_count = 0
+        self.total_foreign_objects = 0
+        self.total_moisture_percent = 0.0
+        self.moisture_sample_count = 0
+        self.total_pns_score = 0
+        self.total_value = 0.0
+        self.current_bean_foreign_object = False
         self.nir_sample_spectra = []
         self.nir_pending_spectrum = None
         self.collecting_nir_scans = False
@@ -660,7 +671,7 @@ class Dashboard(QWidget):
         self.set_ir_sample_active(True)
         self.start_camera()
         self._update_system_controls(
-            f"Batch {self.current_batch_number:04d}: Processing"
+            ""
         )
         self.emit_bean_data_update()
 
@@ -671,15 +682,40 @@ class Dashboard(QWidget):
         self.awaiting_bean_classification = False
         self.stop_camera()
         self.system_running = False
+        self._finalize_batch_totals()
         self._update_system_controls(
-            f"Batch {self.current_batch_number:04d}: Stopped"
+            ""
         )
         self.emit_bean_data_update()
+
+    def _finalize_batch_totals(self) -> None:
+        if self.batches_processed == 0:
+            self.batches_processed = 1
+        else:
+            self.batches_processed += 1
+
+        self.total_batch_weight_grams += self.current_batch_weight_grams
+        batch_items = self.good_bean_count + self.not_good_bean_count
+
+        if self.current_nir_moisture is not None:
+            self.total_moisture_percent += self.current_nir_moisture
+            self.moisture_sample_count += 1
+
+        batch_grade = pns_grade_from_weighted_count(
+            batch_items,
+            self.current_batch_weight_grams,
+        )
+        batch_pns_score = {"A": 100, "B": 80, "C": 60}.get(batch_grade, 0)
+        self.total_pns_score += batch_pns_score
+
+        self.update_all_batches_totals_display()
 
     def _update_system_controls(self, status: str) -> None:
         self.start_system_button.setEnabled(not self.system_running)
         self.stop_system_button.setEnabled(self.system_running)
-        self.batch_status_value.setText(status)
+        self.start_system_button.setText(
+            "PROCESSING..." if self.system_running else "START SYSTEM"
+        )
 
     def _update_batch_weight(self, cumulative_weight_grams: float) -> None:
         if self.batch_weight_baseline_grams is None:
@@ -992,6 +1028,7 @@ class Dashboard(QWidget):
 
     def _reset_current_bean_readings(self) -> None:
         self.current_bean_camera_quality = None
+        self.current_bean_foreign_object = False
         self.last_quality_confidence = 0.0
         self.current_nir_moisture = None
         self.quality_value.setText("UNDEFINED")
@@ -1087,14 +1124,20 @@ class Dashboard(QWidget):
 
         if width < 520:
             columns = 1
+            totals_columns = 2
         elif width < 900:
             columns = 2
+            totals_columns = 4
         else:
             columns = 5
+            totals_columns = 4
 
         if columns != getattr(self, "card_columns", None):
             self.card_columns = columns
             self.reflow_cards(columns)
+        if totals_columns != getattr(self, "totals_card_columns", None):
+            self.totals_card_columns = totals_columns
+            self.reflow_totals_cards(totals_columns)
 
         is_narrow = width < 760
         self.middle_layout.setDirection(
@@ -1117,6 +1160,17 @@ class Dashboard(QWidget):
 
         for index, card in enumerate(self.cards):
             self.cards_layout.addWidget(
+                card,
+                index // columns,
+                index % columns,
+            )
+
+    def reflow_totals_cards(self, columns: int) -> None:
+        while self.totals_cards_layout.count():
+            self.totals_cards_layout.takeAt(0)
+
+        for index, card in enumerate(self.totals_cards):
+            self.totals_cards_layout.addWidget(
                 card,
                 index // columns,
                 index % columns,
@@ -1531,7 +1585,7 @@ class Dashboard(QWidget):
                     )
                 )
 
-        confidence, quality, _ = max(
+        confidence, quality, is_foreign_object = max(
             candidates,
             key=lambda candidate: (
                 candidate[2],
@@ -1540,6 +1594,7 @@ class Dashboard(QWidget):
             ),
             default=(0.0, "UNDEFINED", False),
         )
+        self.current_bean_foreign_object = is_foreign_object
         self.last_quality_confidence = confidence
         self.quality_value.setText(quality)
         self.update_quality_totals_display()
@@ -1571,6 +1626,35 @@ class Dashboard(QWidget):
             f"{self.not_good_batch_weight_grams:.2f}"
         )
 
+    def update_all_batches_totals_display(self) -> None:
+        total_items = self.total_item_count
+        good_rate = (
+            self.total_good_bean_count / total_items * 100.0
+            if total_items > 0
+            else 0.0
+        )
+        avg_pns_score = (
+            self.total_pns_score / self.batches_processed
+            if self.batches_processed > 0
+            else 0.0
+        )
+        avg_moisture = (
+            self.total_moisture_percent / self.moisture_sample_count
+            if self.moisture_sample_count > 0
+            else 0.0
+        )
+
+        self.batches_processed_value.setText(str(self.batches_processed))
+        self.total_weight_value.setText(
+            f"{self.total_batch_weight_grams:.2f}"
+        )
+        self.total_item_count_value.setText(str(total_items))
+        self.good_bean_rate_value.setText(f"{good_rate:.2f}%")
+        self.total_value_value.setText(f"₱ {self.total_value:,.2f}")
+        self.avg_pns_score_value.setText(f"{avg_pns_score:.2f}")
+        self.avg_moisture_value.setText(f"{avg_moisture:.2f}%")
+        self.foreign_objects_value.setText(str(self.total_foreign_objects))
+
     def _send_bean_sort_command(self, quality: str) -> bool:
         if not self.awaiting_bean_classification:
             return False
@@ -1594,9 +1678,14 @@ class Dashboard(QWidget):
         self.awaiting_bean_classification = False
         if is_good:
             self.good_bean_count += 1
+            self.total_good_bean_count += 1
         else:
             self.not_good_bean_count += 1
+        self.total_item_count += 1
+        if self.current_bean_foreign_object:
+            self.total_foreign_objects += 1
         self.update_quality_totals_display()
+        self.update_all_batches_totals_display()
         self.emit_bean_data_update()
         return True
 
@@ -1698,7 +1787,12 @@ class Dashboard(QWidget):
         ):
             self.good_bean_count = max(0, self.good_bean_count - 1)
             self.not_good_bean_count += 1
+            self.total_good_bean_count = max(
+                0,
+                self.total_good_bean_count - 1,
+            )
             self.update_quality_totals_display()
+            self.update_all_batches_totals_display()
             self.emit_bean_data_update()
 
     def _reject_unclassified_bean(self) -> None:
@@ -2029,9 +2123,11 @@ class Dashboard(QWidget):
         stop_button.setEnabled(False)
         start_button.setMinimumWidth(150)
         stop_button.setMinimumWidth(150)
+        start_button.setContentsMargins(0, 18, 0, 0)
+        stop_button.setContentsMargins(0, 18, 0, 0)
 
-        heading_layout.addWidget(start_button)
-        heading_layout.addWidget(stop_button)
+        heading_layout.addWidget(start_button, 0, Qt.AlignmentFlag.AlignBottom)
+        heading_layout.addWidget(stop_button, 0, Qt.AlignmentFlag.AlignBottom)
 
         # --------------------------------
         # STATUS CARDS
@@ -2078,6 +2174,63 @@ class Dashboard(QWidget):
         current_batch_label.setObjectName("current_batch_live_label")
         heading_cards_layout.addWidget(current_batch_label)
         heading_cards_layout.addLayout(self.cards_layout)
+
+        all_batches_label = QLabel("ALL BATCHES • TOTALS")
+        all_batches_label.setObjectName("all_batches_totals_label")
+        heading_cards_layout.addWidget(all_batches_label)
+
+        self.totals_cards_layout = QGridLayout()
+        self.totals_cards_layout.setHorizontalSpacing(12)
+        self.totals_cards_layout.setVerticalSpacing(12)
+        self.totals_cards = [
+            self.create_card("BATCHES PROCESSED", "0", "batches"),
+            self.create_card("TOTAL WEIGHT", "0", "grams"),
+            self.create_card("TOTAL ITEM COUNT", "0", "Beans processed"),
+            self.create_card("GOOD-BEAN RATE", "0.00%", "of items"),
+            self.create_card("TOTAL VALUE", "₱ 0.00", "peso"),
+            self.create_card("AVG PNS SCORE", "0.00", "out of 100"),
+            self.create_card("AVG MOISTURE", "0.00%", "content"),
+            self.create_card("FOREIGN OBJECTS", "0", "objects"),
+        ]
+        self.batches_processed_value = self.totals_cards[0].findChild(
+            QLabel, "card_value"
+        )
+        self.total_weight_value = self.totals_cards[1].findChild(
+            QLabel, "card_value"
+        )
+        self.total_item_count_value = self.totals_cards[2].findChild(
+            QLabel, "card_value"
+        )
+        self.good_bean_rate_value = self.totals_cards[3].findChild(
+            QLabel, "card_value"
+        )
+        self.total_value_value = self.totals_cards[4].findChild(
+            QLabel, "card_value"
+        )
+        self.avg_pns_score_value = self.totals_cards[5].findChild(
+            QLabel, "card_value"
+        )
+        self.avg_moisture_value = self.totals_cards[6].findChild(
+            QLabel, "card_value"
+        )
+        self.foreign_objects_value = self.totals_cards[7].findChild(
+            QLabel, "card_value"
+        )
+        for label_name, label in (
+            ("batches_processed", self.batches_processed_value),
+            ("total_weight", self.total_weight_value),
+            ("total_item_count", self.total_item_count_value),
+            ("good_bean_rate", self.good_bean_rate_value),
+            ("total_value", self.total_value_value),
+            ("avg_pns_score", self.avg_pns_score_value),
+            ("avg_moisture", self.avg_moisture_value),
+            ("foreign_objects", self.foreign_objects_value),
+        ):
+            if label is None:
+                raise RuntimeError(f"The {label_name} totals card has no value label.")
+        self.totals_card_columns = 1
+        self.reflow_totals_cards(self.totals_card_columns)
+        heading_cards_layout.addLayout(self.totals_cards_layout)
         main_layout.addLayout(heading_cards_layout)
 
         # --------------------------------
@@ -2129,11 +2282,6 @@ class Dashboard(QWidget):
 
         main_layout.addLayout(middle_layout)
 
-        self.batch_status_value = QLabel("")
-        self.batch_status_value.setObjectName("batch_status_value")
-        self.batch_status_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.batch_status_value.setWordWrap(True)
-        main_layout.addWidget(self.batch_status_value)
 
     def update_camera_status_indicator(self) -> None:
         self.camera_connected = bool(QMediaDevices.videoInputs())

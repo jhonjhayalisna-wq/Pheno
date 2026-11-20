@@ -1209,7 +1209,13 @@ QPushButton:checked {
 
 QLabel#current_batch_live_label {
     color: #68796f;
-    font-size: 14px;
+    font-size: 30px;
+    font-weight: 700;
+}
+
+QLabel#all_batches_totals_label {
+    color: #68796f;
+    font-size: 30px;
     font-weight: 700;
 }
 
@@ -1834,7 +1840,7 @@ APP_STYLE += """
 }
 
 #central_widget #right_side #dashboard QLabel#card_title {
-    font-size: 35px;
+    font-size: 30px;
 }
 
 #central_widget #right_side #dashboard QLabel#card_value {
