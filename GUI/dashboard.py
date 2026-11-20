@@ -2335,8 +2335,8 @@ class Dashboard(QWidget):
         stop_button.setEnabled(False)
         start_button.setMinimumWidth(150)
         stop_button.setMinimumWidth(150)
-        start_button.setContentsMargins(0, 18, 0, 0)
-        stop_button.setContentsMargins(0, 18, 0, 0)
+        start_button.setContentsMargins(0, 36, 0, 0)
+        stop_button.setContentsMargins(0, 36, 0, 0)
 
         heading_layout.addWidget(start_button, 0, Qt.AlignmentFlag.AlignBottom)
         heading_layout.addWidget(stop_button, 0, Qt.AlignmentFlag.AlignBottom)
