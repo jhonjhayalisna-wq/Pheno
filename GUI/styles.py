@@ -1219,6 +1219,22 @@ QLabel#all_batches_totals_label {
     font-weight: 700;
 }
 
+QPushButton#dashboard_totals_period_button {
+    background-color: #edf2ee;
+    border: 1px solid #dce5df;
+    border-radius: 8px;
+    color: #43594a;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 14px;
+}
+
+QPushButton#dashboard_totals_period_button:checked {
+    background-color: #43845a;
+    border-color: #43845a;
+    color: #ffffff;
+}
+
 QFrame#dashboard_breakdown_panel {
     background-color: #ffffff;
     border: 1px solid #dce5df;

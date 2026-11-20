@@ -3,7 +3,7 @@
 from collections.abc import Mapping, Sequence
 import re
 import time
-from datetime import date
+from datetime import date, datetime, timedelta
 from math import ceil, isfinite
 from pathlib import Path
 from time import perf_counter
@@ -309,6 +309,28 @@ class Dashboard(QWidget):
         self.quality_summary_value.hide()
         self.good_bean_count = 0
         self.not_good_bean_count = 0
+        self.batch_foreign_objects = 0
+        self.grade_counts = {"A": 0, "B": 0, "C": 0}
+        self.defect_counts = {
+            "MOLDY": 0,
+            "SLATY": 0,
+            "GERMINATED": 0,
+            "INSECT-DAMAGED": 0,
+            "FLAT": 0,
+            "BROKEN": 0,
+            "DOUBLE": 0,
+        }
+        self.grade_counts = {"A": 0, "B": 0, "C": 0}
+        self.defect_counts = {
+            "MOLDY": 0,
+            "SLATY": 0,
+            "GERMINATED": 0,
+            "INSECT-DAMAGED": 0,
+            "FLAT": 0,
+            "BROKEN": 0,
+            "DOUBLE": 0,
+        }
+        self.batch_foreign_objects = 0
         self.good_batch_weight_grams = 0.0
         self.not_good_batch_weight_grams = 0.0
         self.good_weight_grams = 0.0
@@ -318,6 +340,7 @@ class Dashboard(QWidget):
         self.total_item_count = 0
         self.total_good_bean_count = 0
         self.total_foreign_objects = 0
+        self.batch_foreign_objects = 0
         self.total_moisture_percent = 0.0
         self.moisture_sample_count = 0
         self.total_pns_score = 0
@@ -333,6 +356,8 @@ class Dashboard(QWidget):
             "BROKEN": 0,
             "DOUBLE": 0,
         }
+        self.completed_batches: list[dict[str, Any]] = []
+        self.selected_totals_period = "ALL TIME"
         self.nir_sample_spectra = []
         self.nir_pending_spectrum = None
         self.collecting_nir_scans = False
@@ -786,6 +811,25 @@ class Dashboard(QWidget):
         )
         batch_pns_score = {"A": 100, "B": 80, "C": 60}.get(batch_grade, 0)
         self.total_pns_score += batch_pns_score
+
+        self.completed_batches.append(
+            {
+                "completed_at": datetime.now(),
+                "weight": self.current_batch_weight_grams,
+                "item_count": batch_items,
+                "good_count": self.good_bean_count,
+                "foreign_objects": self.batch_foreign_objects,
+                "moisture": (
+                    self.current_nir_moisture
+                    if self.current_nir_moisture is not None
+                    else None
+                ),
+                "pns_score": batch_pns_score,
+                "total_value": self.total_value,
+                "grade_counts": dict(self.grade_counts),
+                "defect_counts": dict(self.defect_counts),
+            }
+        )
 
         self.update_all_batches_totals_display()
 
@@ -1705,48 +1749,111 @@ class Dashboard(QWidget):
             f"{self.not_good_batch_weight_grams:.2f}"
         )
 
+    def set_totals_period(self, period: str) -> None:
+        if period not in ("TODAY", "THIS WEEK", "ALL TIME"):
+            return
+        self.selected_totals_period = period
+        for button in getattr(self, "totals_period_buttons", {}).values():
+            button.setChecked(button.text() == period)
+        self.update_all_batches_totals_display()
+
     def update_all_batches_totals_display(self) -> None:
-        total_items = self.total_item_count
+        now = datetime.now()
+        if self.selected_totals_period == "TODAY":
+            filtered_batches = [
+                record
+                for record in self.completed_batches
+                if record["completed_at"].date() == now.date()
+            ]
+        elif self.selected_totals_period == "THIS WEEK":
+            week_start = (now - timedelta(days=now.weekday())).date()
+            filtered_batches = [
+                record
+                for record in self.completed_batches
+                if record["completed_at"].date() >= week_start
+            ]
+        else:
+            filtered_batches = list(self.completed_batches)
+
+        batch_count = len(filtered_batches)
+        total_items = sum(
+            int(record["item_count"]) for record in filtered_batches
+        )
+        good_items = sum(
+            int(record["good_count"]) for record in filtered_batches
+        )
+        total_weight = sum(
+            float(record["weight"]) for record in filtered_batches
+        )
+        total_foreign_objects = sum(
+            int(record["foreign_objects"]) for record in filtered_batches
+        )
+        pns_scores = [
+            int(record["pns_score"]) for record in filtered_batches
+        ]
+        moisture_values = [
+            float(record["moisture"])
+            for record in filtered_batches
+            if record["moisture"] is not None
+        ]
+        total_value = sum(
+            float(record["total_value"]) for record in filtered_batches
+        )
         good_rate = (
-            self.total_good_bean_count / total_items * 100.0
+            good_items / total_items * 100.0
             if total_items > 0
             else 0.0
         )
         avg_pns_score = (
-            self.total_pns_score / self.batches_processed
-            if self.batches_processed > 0
+            sum(pns_scores) / len(pns_scores)
+            if pns_scores
             else 0.0
         )
         avg_moisture = (
-            self.total_moisture_percent / self.moisture_sample_count
-            if self.moisture_sample_count > 0
+            sum(moisture_values) / len(moisture_values)
+            if moisture_values
             else 0.0
         )
 
         labels: tuple[tuple[QLabel | None, str], ...] = (
-            (self.batches_processed_value, str(self.batches_processed)),
-            (self.total_weight_value, f"{self.total_batch_weight_grams:.2f}"),
+            (self.batches_processed_value, str(batch_count)),
+            (self.total_weight_value, f"{total_weight:.2f}"),
             (self.total_item_count_value, str(total_items)),
             (self.good_bean_rate_value, f"{good_rate:.2f}%"),
-            (self.total_value_value, f"₱ {self.total_value:,.2f}"),
+            (self.total_value_value, f"₱ {total_value:,.2f}"),
             (self.avg_pns_score_value, f"{avg_pns_score:.2f}"),
             (self.avg_moisture_value, f"{avg_moisture:.2f}%"),
-            (self.foreign_objects_value, str(self.total_foreign_objects)),
+            (self.foreign_objects_value, str(total_foreign_objects)),
         )
         for label, text in labels:
             if label is not None:
                 label.setText(text)
 
-        self.grade_distribution.set_counts(self.grade_counts)
+        filtered_grade_counts = {
+            grade: sum(
+                int(record["grade_counts"].get(grade, 0))
+                for record in filtered_batches
+            )
+            for grade in ("A", "B", "C")
+        }
+        filtered_defect_counts = {
+            key: sum(
+                int(record["defect_counts"].get(key, 0))
+                for record in filtered_batches
+            )
+            for key in self.defect_counts
+        }
+
+        self.grade_distribution.set_counts(filtered_grade_counts)
         for grade in ("A", "B", "C"):
-            count = self.grade_counts[grade]
+            count = filtered_grade_counts[grade]
             self.grade_legend_labels[grade].setText(
                 f"Grade {grade} - {count}"
             )
 
-        defect_max = max(self.defect_counts.values(), default=0)
+        defect_max = max(filtered_defect_counts.values(), default=0)
         for key, bar in self.defect_progress_bars.items():
-            count = self.defect_counts[key]
+            count = filtered_defect_counts[key]
             bar.setValue(
                 int(count * 100 / defect_max)
                 if defect_max > 0
@@ -1789,6 +1896,7 @@ class Dashboard(QWidget):
         self.total_item_count += 1
         if self.current_bean_foreign_object:
             self.total_foreign_objects += 1
+            self.batch_foreign_objects += 1
         self.update_quality_totals_display()
         self.update_all_batches_totals_display()
         self.emit_bean_data_update()
@@ -2279,9 +2387,28 @@ class Dashboard(QWidget):
         heading_cards_layout.addWidget(current_batch_label)
         heading_cards_layout.addLayout(self.cards_layout)
 
+        totals_heading_layout = QHBoxLayout()
+        totals_heading_layout.setContentsMargins(0, 0, 0, 0)
+        totals_heading_layout.setSpacing(8)
+
         all_batches_label = QLabel("ALL BATCHES • TOTALS")
         all_batches_label.setObjectName("all_batches_totals_label")
-        heading_cards_layout.addWidget(all_batches_label)
+        totals_heading_layout.addWidget(all_batches_label)
+        totals_heading_layout.addStretch()
+
+        self.totals_period_buttons: dict[str, QPushButton] = {}
+        for period in ("TODAY", "THIS WEEK", "ALL TIME"):
+            period_button = QPushButton(period)
+            period_button.setObjectName("dashboard_totals_period_button")
+            period_button.setCheckable(True)
+            period_button.setChecked(period == "ALL TIME")
+            period_button.clicked.connect(
+                lambda _checked=False, value=period: self.set_totals_period(value)
+            )
+            totals_heading_layout.addWidget(period_button)
+            self.totals_period_buttons[period] = period_button
+
+        heading_cards_layout.addLayout(totals_heading_layout)
 
         self.totals_cards_layout = QGridLayout()
         self.totals_cards_layout.setHorizontalSpacing(12)
