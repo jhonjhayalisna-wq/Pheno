@@ -542,7 +542,7 @@ class AdminControlPanel(QMainWindow):
         "System Overview",
         "Camera",
         "NIR Analysis",
-        "Weight Analysis",
+        "WEIGHT SETTINGS",
         "System Settings",
         "Process Monitor / Debug Logs",
         "History",

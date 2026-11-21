@@ -176,6 +176,10 @@ class FakeDashboard(QWidget):
     def submit_load_cell_calibration_mass(self, command):
         self.commands.append(("calibration-mass", command))
 
+    def send_serial_command(self, command):
+        self.commands.append(("serial", command))
+        return True
+
     def set_servo_angle(self, motor, angle):
         self.commands.append(("angle", motor, angle))
 
@@ -556,32 +560,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
             )
         )
 
-    def test_admin_weight_analysis_displays_bean_id_and_good_bean_weight(self):
-        dashboard = FakeDashboard()
-        page = ResultsPage(dashboard)
-
-        dashboard.bean_data_updated.emit(
-            {"bean_count": 1, "bean_id": "B-0001"}
-        )
-        dashboard.weight_readings_changed.emit(1250.0)
-
-        self.assertEqual(page.table.rowCount(), 1)
-        self.assertEqual(
-            [
-                page.table.horizontalHeaderItem(column).text()
-                for column in range(page.table.columnCount())
-            ],
-            ["Bean ID", "Good Bean Weight"],
-        )
-        self.assertEqual(
-            [
-                page.table.item(0, 0).text(),
-                page.table.item(0, 1).text(),
-            ],
-            ["B-0001", "1250.00 g"],
-        )
-        page.close()
-
     def test_unknown_camera_classification_uses_distinct_sort_command(self):
         dashboard = Dashboard()
         dashboard.arduino_serial = SimpleNamespace(is_open=True)
@@ -594,22 +572,23 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertTrue(dashboard._send_bean_sort_command("UNDEFINED"))
         self.assertEqual(commands, ["SORT_UNDEFINED\n"])
 
-    def test_weight_analysis_table_uses_live_counts_and_sensor_readings(self):
+    def test_weight_settings_displays_live_load_cell_response(self):
         dashboard = Dashboard()
         page = ResultsPage(dashboard)
-
-        dashboard._display_total_bean_count(125)
-        dashboard.update_good_weight_display(1234.5)
-
-        self.assertEqual(page.total_seeds_value.text(), "125")
-        self.assertEqual(page.table.rowCount(), 1)
-        self.assertEqual(
-            [page.table.item(0, 0).text()],
-            ["1234.50 g"],
+        dashboard.nir_message_received.emit("Load Cell 1: 1234.50 g")
+        self.assertIn(
+            "Load Cell 1: 1234.50 g",
+            page.load_cell_response.toPlainText(),
         )
 
-        dashboard.update_good_weight_display(None)
-        self.assertEqual(page.table.rowCount(), 0)
+    def test_weight_settings_sends_serial_command_and_clears_input(self):
+        dashboard = FakeDashboard()
+        page = ResultsPage(dashboard)
+        page.serial_command_input.setText("C")
+        page.send_serial_button.click()
+        self.assertIn(("serial", "C"), dashboard.commands)
+        self.assertEqual(page.serial_command_input.text(), "")
+        self.assertIn("> C", page.load_cell_response.toPlainText())
 
     def test_ir_bean_count_messages_update_dashboard_total(self):
         dashboard = Dashboard()

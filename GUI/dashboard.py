@@ -1,13 +1,13 @@
 # dashboard.py
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 import re
 import time
 from datetime import date, datetime, timedelta
 from math import ceil, isfinite
 from pathlib import Path
 from time import perf_counter
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from numpy.typing import NDArray
 
@@ -908,6 +908,20 @@ class Dashboard(QWidget):
             )
             return
         self.write_arduino_command("C\n")
+
+    def send_serial_command(self, command: object) -> bool:
+        if not isinstance(command, str):
+            return False
+        command = command.strip()
+        if not command:
+            return False
+        if "\r" in command or "\n" in command:
+            return False
+        try:
+            command.encode("ascii")
+        except UnicodeEncodeError:
+            return False
+        return self.write_arduino_command(f"{command}\n")
 
     def submit_load_cell_calibration_mass(self, command: object) -> None:
         if not isinstance(command, str) or not re.fullmatch(
@@ -2053,16 +2067,20 @@ class Dashboard(QWidget):
         self.update_quality_from_ai_result(None)
         self.ai_model = model
         self.ai_model_error = ""
-        model_names = getattr(model, "names", {})
+        model_names: object = getattr(model, "names", {})
         if isinstance(model_names, Mapping):
-            class_names: tuple[str, ...] = tuple(
-                str(name) for name in model_names.values()
+            typed_model_names = cast(
+                Mapping[object, object],
+                model_names,
             )
+            model_name_values: Iterable[object] = typed_model_names.values()
+        elif isinstance(model_names, Iterable):
+            model_name_values = cast(Iterable[object], model_names)
         else:
-            try:
-                class_names = tuple(str(name) for name in model_names)
-            except TypeError:
-                class_names = ()
+            model_name_values = ()
+        class_names: tuple[str, ...] = tuple(
+            str(name) for name in model_name_values
+        )
         present_categories = {
             category
             for class_name in class_names

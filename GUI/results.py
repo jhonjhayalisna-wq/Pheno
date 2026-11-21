@@ -1,13 +1,10 @@
-from collections.abc import Mapping
-from typing import Any
-
 from PySide6.QtWidgets import (
-    QGridLayout,
-    QLabel,
     QFrame,
-    QHeaderView,
-    QTableWidget,
-    QTableWidgetItem,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -17,89 +14,103 @@ class ResultsPage(QWidget):
     def __init__(self, dashboard):
         super().__init__()
         self.setObjectName("results_page")
-        dashboard.weight_readings_changed.connect(self.update_weights)
-        dashboard.bean_data_updated.connect(self.update_bean_count)
-        self.current_bean_id: str = "--"
+        self.dashboard = dashboard
         self.setup_ui()
-        self.update_bean_count(
-            {"bean_count": dashboard.total_bean_count}
-        )
-        self.update_weights(dashboard.good_weight_grams)
+        nir_message_received = getattr(dashboard, "nir_message_received", None)
+        if nir_message_received is not None:
+            nir_message_received.connect(self.append_load_cell_response)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 14)
         layout.setSpacing(8)
 
-        title_label = QLabel("Weight Analysis")
+        title_label = QLabel("WEIGHT SETTINGS")
         title_label.setObjectName("page_title")
-        subtitle = QLabel(
-            "Live weight measured on the good-bean collection platform."
-        )
-        subtitle.setObjectName("settings_description")
         layout.addWidget(title_label)
-        layout.addWidget(subtitle)
 
-        summary_cards = QGridLayout()
-        summary_cards.setHorizontalSpacing(8)
-        summary_cards.setVerticalSpacing(8)
-        for index, (label, value) in enumerate([
-            ("Total seeds", "No data"),
-            ("Foreign Objects", "No data"),
-        ]):
-            card = QFrame()
-            card.setObjectName("settings_panel")
-            card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(10, 8, 10, 8)
-            name = QLabel(label)
-            name.setObjectName("results_summary_label")
-            name.setStyleSheet("color: #6b7280;")
-            value_label = QLabel(value)
-            value_label.setStyleSheet("font-size: 42px; font-weight: bold;")
-            card_layout.addWidget(name)
-            card_layout.addWidget(value_label)
-            summary_cards.addWidget(card, index // 2, index % 2)
-            if label == "Total seeds":
-                self.total_seeds_value = value_label
-        layout.addLayout(summary_cards)
+        monitor_panel = QFrame()
+        monitor_panel.setObjectName("settings_panel")
+        monitor_layout = QVBoxLayout(monitor_panel)
+        monitor_layout.setContentsMargins(12, 12, 12, 12)
+        monitor_layout.setSpacing(8)
 
-        self.table = QTableWidget()
-        self.table.setObjectName("results_table")
-        self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["Bean ID", "Good Bean Weight"])
-        self.table.setRowCount(0)
-        self.table.setMinimumHeight(220)
-        self.table.horizontalHeader().setSectionsMovable(False)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        self.table.verticalHeader().setDefaultSectionSize(34)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        layout.addWidget(self.table)
+        response_header = QHBoxLayout()
+        response_header.setContentsMargins(0, 0, 0, 0)
+        response_label = QLabel("Arduino Serial Monitor")
+        response_label.setObjectName("weight_response_label")
+        response_header.addWidget(response_label)
+        response_header.addStretch()
+        self.clear_monitor_button = QPushButton("Clear")
+        self.clear_monitor_button.setObjectName("weight_clear_monitor")
+        self.clear_monitor_button.clicked.connect(
+            lambda: self.load_cell_response.clear()
+        )
+        response_header.addWidget(self.clear_monitor_button)
+        monitor_layout.addLayout(response_header)
 
+        self.load_cell_response = QPlainTextEdit()
+        self.load_cell_response.setObjectName("weight_load_cell_response")
+        self.load_cell_response.setReadOnly(True)
+        self.load_cell_response.setMinimumHeight(220)
+        self.load_cell_response.setMaximumBlockCount(1000)
+        self.load_cell_response.setPlaceholderText(
+            "Arduino responses and load-cell readings will appear here."
+        )
+        monitor_layout.addWidget(self.load_cell_response)
+
+        serial_input_layout = QHBoxLayout()
+        serial_input_layout.setSpacing(8)
+        self.serial_command_input = QLineEdit()
+        self.serial_command_input.setObjectName("weight_serial_command_input")
+        self.serial_command_input.setPlaceholderText(
+            "Enter Arduino command (for example: C, K1,100.00)"
+        )
+        self.serial_command_input.returnPressed.connect(
+            self.send_serial_command
+        )
+        serial_input_layout.addWidget(self.serial_command_input, 1)
+        self.send_serial_button = QPushButton("Send")
+        self.send_serial_button.setObjectName("weight_send_serial")
+        self.send_serial_button.clicked.connect(
+            self.send_serial_command
+        )
+        serial_input_layout.addWidget(self.send_serial_button)
+        monitor_layout.addLayout(serial_input_layout)
+
+        layout.addWidget(monitor_panel)
         layout.addStretch()
 
-    def update_bean_count(self, bean_data: Mapping[str, Any]) -> None:
-        self.total_seeds_value.setText(f"{bean_data['bean_count']:,}")
-        self.current_bean_id = str(bean_data.get("bean_id") or "--")
-        if self.table.rowCount():
-            self.table.setItem(
-                0,
-                0,
-                QTableWidgetItem(str(self.current_bean_id)),
+    def send_serial_command(self) -> None:
+        command = self.serial_command_input.text().strip()
+        if not command:
+            self.load_cell_response.appendPlainText(
+                "Enter a command before sending."
+            )
+            return
+        try:
+            command.encode("ascii")
+        except UnicodeEncodeError:
+            self.load_cell_response.appendPlainText(
+                "Send failed: use ASCII characters only."
+            )
+            return
+        if hasattr(self.dashboard, "send_serial_command"):
+            sent = self.dashboard.send_serial_command(command)
+        else:
+            sent = False
+        if sent:
+            self.load_cell_response.appendPlainText(f"> {command}")
+            self.serial_command_input.clear()
+        else:
+            self.load_cell_response.appendPlainText(
+                "Send failed: Arduino is not connected."
             )
 
-    def update_weights(self, good_weight_grams: float | None) -> None:
-        if good_weight_grams is None:
-            self.table.setRowCount(0)
+    def append_load_cell_response(self, message: str) -> None:
+        if not isinstance(message, str):
             return
-        self.table.setRowCount(1)
-        self.table.setItem(
-            0,
-            0,
-            QTableWidgetItem(str(self.current_bean_id)),
-        )
-        self.table.setItem(
-            0,
-            1,
-            QTableWidgetItem(f"{good_weight_grams:.2f} g"),
-        )
+        message = message.strip()
+        if not message:
+            return
+        self.load_cell_response.appendPlainText(message)

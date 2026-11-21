@@ -31,7 +31,7 @@ _FONT_SIZE_SCALE = {
 }
 
 
-APP_STYLE = """
+_app_style = """
 QMainWindow {
     background-color: #f4f6f8;
 }
@@ -1602,15 +1602,15 @@ QTableWidget#results_table {
 }
 """
 
-APP_STYLE = re.sub(
+_app_style = re.sub(
     r"font-size:\s*(\d+)px;",
     lambda match: "font-size: {}px;".format(
         _FONT_SIZE_SCALE[int(match.group(1))]
     ),
-    APP_STYLE,
+    _app_style,
 )
 
-APP_STYLE += """
+_app_style += """
 #sidebar[compact="true"] #logo_title {
     font-size: 16px;
 }
@@ -1784,17 +1784,66 @@ QLabel#section_title,
 #bean_sheet_table_title {
     font-size: 20px;
 }
+
+#weight_response_label {
+    color: #435b4d;
+    font-size: 30px;
+    font-weight: 600;
+}
+
+QPlainTextEdit#weight_load_cell_response {
+    color: #20392b;
+    background-color: #ffffff;
+    border: 1px solid #ccd8d0;
+    border-radius: 8px;
+    font-size: 14px;
+    min-height: 220px;
+    padding: 10px;
+}
+
+QLineEdit#weight_serial_command_input {
+    color: #173f2a;
+    background-color: #ffffff;
+    border: 1px solid #b9cabc;
+    border-radius: 7px;
+    font-size: 16px;
+    min-height: 42px;
+    padding: 8px 10px;
+    selection-background-color: #cfe5d5;
+    selection-color: #173f2a;
+}
+
+QLineEdit#weight_serial_command_input:focus {
+    border: 1px solid #43845a;
+}
+
+QPushButton#weight_send_serial,
+QPushButton#weight_clear_monitor {
+    color: #ffffff;
+    background-color: #2e7d4f;
+    border: none;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 700;
+    min-height: 42px;
+    padding: 8px 14px;
+}
+
+QPushButton#weight_send_serial:hover,
+QPushButton#weight_clear_monitor:hover {
+    background-color: #245f40;
+}
 """
 
-APP_STYLE = re.sub(
+_app_style = re.sub(
     r"(-?\d+(?:\.\d+)?)px",
     lambda match: "{}px".format(
         round(float(match.group(1)) * 1.5)
     ),
-    APP_STYLE,
+    _app_style,
 )
 
-APP_STYLE += """
+_app_style += """
 #pricing_settings_page QLabel,
 #pricing_settings_page QLineEdit,
 #pricing_settings_page QDoubleSpinBox,
@@ -1837,7 +1886,7 @@ APP_STYLE += """
 }
 """
 
-APP_STYLE += """
+_app_style += """
 #central_widget #right_side QLabel,
 #central_widget #right_side QLineEdit,
 #central_widget #right_side QDoubleSpinBox,
@@ -1978,3 +2027,5 @@ APP_STYLE += """
     font-size: 35px;
 }
 """
+
+APP_STYLE = _app_style
