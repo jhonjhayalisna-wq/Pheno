@@ -101,7 +101,7 @@ class NIRAnalysisPage(QWidget):
         summary.addWidget(summary_title)
         summary_values = {
             "Moisture Content": QLabel("Not available"),
-            "Quality": QLabel(""),
+            "Quality": QLabel("Waiting for scan"),
             "Confidence": QLabel(""),
         }
         self.moisture_content_value = summary_values["Moisture Content"]
@@ -148,14 +148,17 @@ class NIRAnalysisPage(QWidget):
         label: str,
         confidence: float | None = None,
     ) -> None:
-        if confidence is None or label == "UNAVAILABLE":
-            self.quality_value.setText(
-                "Unavailable" if label == "UNAVAILABLE" else ""
-            )
+        normalized_label = label.strip().upper()
+        if normalized_label == "UNAVAILABLE":
+            self.quality_value.setText("Unavailable")
             self.nir_confidence_value.setText("")
             return
-        self.quality_value.setText(label)
-        self.nir_confidence_value.setText(f"{confidence:.1f}%")
+        self.quality_value.setText(
+            normalized_label or "Waiting for scan"
+        )
+        self.nir_confidence_value.setText(
+            "" if confidence is None else f"{confidence:.1f}%"
+        )
 
     def set_bean_id(self, bean_id: str) -> None:
         self.spectrum_bean_id_value.setText(bean_id or "--")
@@ -171,6 +174,17 @@ class NIRAnalysisPage(QWidget):
     def update_bean_data(self, metrics: Mapping[str, Any]) -> None:
         self.set_bean_id(str(metrics.get("bean_id") or "--"))
         self.set_moisture_content(metrics.get("moisture"))
+        if "nir_classification" in metrics or "nir_confidence" in metrics:
+            confidence = metrics.get("nir_confidence")
+            confidence_percent = (
+                None
+                if confidence is None
+                else float(confidence) * 100.0
+            )
+            self.set_classifier_result(
+                str(metrics.get("nir_classification") or ""),
+                confidence_percent,
+            )
 
     def set_scanning_state(self, enabled: bool) -> None:
         self.scanning = bool(enabled)

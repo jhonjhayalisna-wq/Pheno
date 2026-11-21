@@ -1466,11 +1466,16 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard.bean_data_updated.connect(
             bean_data_sheet.update_dashboard_metrics
         )
+        dashboard.nir_message_received.connect(page.append_serial_line)
+        dashboard.nir_message_received.connect(
+            bean_data_sheet.append_nir_spectrum_line
+        )
         dashboard.nir_classification_changed.connect(
             page.set_classifier_result
         )
         dashboard.total_bean_count = 1
         dashboard.quality_value.setText("GOOD")
+        bean_data_sheet.view_sensor_button.click()
 
         self.assertIsNotNone(dashboard.nir_classifier)
         self.assertIsNotNone(dashboard.nir_moisture_predictor)
@@ -1518,9 +1523,43 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(ordered_classification, shuffled_classification)
         self.assertEqual(ordered_moisture, shuffled_moisture)
 
-        dashboard.nir_sample_spectra = shuffled_scans
-        with patch.object(dashboard, "write_arduino_command", return_value=True):
-            dashboard._classify_nir_sample()
+        first_scan = (
+            "NIR_CLASSIFICATION_SCANS_STARTED\n"
+            f"{shuffled_line}\n"
+            "NIR_SCAN_COMPLETE\n"
+        ).encode("ascii")
+        dashboard.arduino_port = "COM-test"
+        dashboard.arduino_serial = SimpleNamespace(
+            is_open=True,
+            in_waiting=len(first_scan),
+            read=lambda _size: first_scan,
+            write=lambda command: len(command),
+            close=lambda: None,
+        )
+        dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
+        self.assertEqual(page.spectrum_series.count(), len(WAVELENGTHS))
+        self.assertEqual(
+            (
+                bean_data_sheet.spectral_moisture_value.text(),
+                bean_data_sheet.spectral_quality_value.text(),
+                bean_data_sheet.spectral_confidence_value.text(),
+            ),
+            ("", "", ""),
+        )
+
+        classification_scans = [
+            shuffled_line,
+            "NIR_SCAN_COMPLETE",
+            shuffled_line,
+            "NIR_SCAN_COMPLETE",
+            "NIR_CLASSIFICATION_READY",
+        ]
+        remaining_scans = ("\n".join(classification_scans) + "\n").encode(
+            "ascii"
+        )
+        dashboard.arduino_serial.in_waiting = len(remaining_scans)
+        dashboard.arduino_serial.read = lambda _size: remaining_scans
+        dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
 
         self.assertEqual(page.quality_value.text(), shuffled_classification.label.upper())
         self.assertEqual(
@@ -1529,6 +1568,33 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual(
             page.moisture_content_value.text(),
+            f"{shuffled_moisture:.2f}%",
+        )
+        reopened_page = NIRAnalysisPage()
+        self.addCleanup(reopened_page.close)
+        reopened_page.update_bean_data(dashboard.get_bean_data_snapshot())
+        self.assertEqual(
+            reopened_page.quality_value.text(),
+            shuffled_classification.label.upper(),
+        )
+        self.assertEqual(
+            reopened_page.nir_confidence_value.text(),
+            f"{shuffled_classification.confidence * 100.0:.1f}%",
+        )
+        self.assertEqual(
+            reopened_page.moisture_content_value.text(),
+            f"{shuffled_moisture:.2f}%",
+        )
+        self.assertEqual(
+            bean_data_sheet.spectral_quality_value.text(),
+            shuffled_classification.label.upper(),
+        )
+        self.assertEqual(
+            bean_data_sheet.spectral_confidence_value.text(),
+            f"{shuffled_classification.confidence * 100.0:.1f}%",
+        )
+        self.assertEqual(
+            bean_data_sheet.spectral_moisture_value.text(),
             f"{shuffled_moisture:.2f}%",
         )
         self.assertEqual(
@@ -1565,6 +1631,16 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page.update_bean_data({"bean_id": "bean-1", "moisture": None})
 
         self.assertEqual(page.moisture_content_value.text(), "Not available")
+        page.update_bean_data(
+            {
+                "nir_classification": "SLATY",
+                "nir_confidence": 0.875,
+                "moisture": 12.5,
+            }
+        )
+        self.assertEqual(page.quality_value.text(), "SLATY")
+        self.assertEqual(page.nir_confidence_value.text(), "87.5%")
+        self.assertEqual(page.moisture_content_value.text(), "12.50%")
 
     def test_settings_discloses_that_moisture_offset_is_unimplemented(self):
         page = SettingsPage()
@@ -1668,6 +1744,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual(current_record["nir_classification"], "MOLDY")
         self.assertEqual(current_record["nir_confidence"], 0.9)
+        self.assertEqual(
+            bean_data_page.spectral_quality_value.text(),
+            "MOLDY",
+        )
         self.assertEqual(bean_data_page.data_table.item(0, 3).text(), "MOLDY")
         self.assertEqual(bean_data_page.data_table.item(0, 4).text(), "90.0%")
 
@@ -1679,6 +1759,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(next_record["nir_spectra"], [])
         self.assertIsNone(next_record["nir_classification"])
         self.assertEqual(next_record["quality"], "UNDEFINED")
+        self.assertEqual(
+            bean_data_page.spectral_quality_value.text(),
+            "",
+        )
         bean_data_page.deleteLater()
         dashboard.close()
 
@@ -1688,7 +1772,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         session.grant_admin()
         panel = AdminControlPanel(dashboard, session)
         page = panel.nir_page
-        self.assertEqual(page.quality_value.text(), "")
+        self.assertEqual(page.quality_value.text(), "Waiting for scan")
         self.assertEqual(page.nir_confidence_value.text(), "")
         summary_labels = [
             label.text()
@@ -1755,6 +1839,47 @@ class HardwareCompatibilityTests(unittest.TestCase):
             450,
         )
         panel.deleteLater()
+
+    def test_admin_nir_analysis_restores_latest_model_result_when_opened_late(self):
+        dashboard = Dashboard()
+        self.addCleanup(dashboard.close)
+        dashboard.total_bean_count = 1
+        dashboard.nir_sample_spectra = [
+            [float(index + 1) for index in range(len(WAVELENGTHS))]
+            for _ in range(3)
+        ]
+        with patch.object(
+            dashboard,
+            "write_arduino_command",
+            return_value=True,
+        ):
+            dashboard._classify_nir_sample()
+
+        snapshot = dashboard.get_bean_data_snapshot()
+        quality = snapshot["nir_classification"]
+        confidence = snapshot["nir_confidence"]
+        moisture = snapshot["moisture"]
+        assert isinstance(quality, str)
+        assert isinstance(confidence, (int, float))
+        assert isinstance(moisture, (int, float))
+        session = AdminSession()
+        session.grant_admin()
+        panel = AdminControlPanel(dashboard, session)
+        self.addCleanup(panel.deleteLater)
+        page = panel.nir_page
+
+        self.assertEqual(
+            page.quality_value.text(),
+            quality,
+        )
+        self.assertEqual(
+            page.nir_confidence_value.text(),
+            f"{confidence * 100.0:.1f}%",
+        )
+        self.assertEqual(
+            page.moisture_content_value.text(),
+            f"{moisture:.2f}%",
+        )
 
     def test_dashboard_forwards_firmware_spectrum_to_admin_nir_analysis(self):
         dashboard = Dashboard()
@@ -2668,6 +2793,14 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page = BeanDataSheetPage()
         self.assertEqual(
             (
+                page.spectral_moisture_value.text(),
+                page.spectral_quality_value.text(),
+                page.spectral_confidence_value.text(),
+            ),
+            ("", "", ""),
+        )
+        self.assertEqual(
+            (
                 page.batch_number_value.text(),
                 page.total_weight_value.text(),
                 page.pns_grade_value.text(),
@@ -2691,6 +2824,29 @@ class HardwareCompatibilityTests(unittest.TestCase):
             page.empty_state.text(),
             "No beans recorded for this batch yet.",
         )
+        page.deleteLater()
+
+    def test_bean_data_sensor_result_labels_are_above_value_boxes(self):
+        page = BeanDataSheetPage()
+        labels = page.findChildren(
+            QLabel,
+            "bean_sheet_nir_result_label",
+        )
+        values = (
+            page.spectral_moisture_value,
+            page.spectral_quality_value,
+            page.spectral_confidence_value,
+        )
+
+        self.assertEqual(len(labels), len(values))
+        for label, value in zip(labels, values):
+            label_container = label.parentWidget()
+            value_box = value.parentWidget()
+            self.assertIsNot(label_container, value_box)
+            label_layout = label_container.layout()
+            self.assertIsNotNone(label_layout)
+            self.assertIs(label_layout.itemAt(0).widget(), label)
+            self.assertIs(label_layout.itemAt(1).widget(), value_box)
         page.deleteLater()
 
     def test_bean_data_displays_all_available_current_batch_values(self):

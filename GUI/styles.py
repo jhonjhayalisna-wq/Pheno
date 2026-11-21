@@ -22,6 +22,7 @@ _FONT_SIZE_SCALE = {
     17: TYPOGRAPHY_SCALE["h3"],
     18: TYPOGRAPHY_SCALE["h2"],
     19: TYPOGRAPHY_SCALE["h2"],
+    20: TYPOGRAPHY_SCALE["h2"],
     22: TYPOGRAPHY_SCALE["h1"],
     24: TYPOGRAPHY_SCALE["h1"],
     25: TYPOGRAPHY_SCALE["h1"],
@@ -415,6 +416,12 @@ QFrame#nir_spectrum_bean_id_box {
 QLabel#nir_reading_label {
     color: #6b7280;
     font-size: 12px;
+    font-weight: 600;
+}
+
+QLabel#bean_sheet_nir_result_label {
+    color: #6b7280;
+    font-size: 20px;
     font-weight: 600;
 }
 

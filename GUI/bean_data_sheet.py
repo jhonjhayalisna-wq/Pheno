@@ -294,6 +294,25 @@ class BeanDataSheetPage(QWidget):
         spectrum_title = QLabel("Spectral Response")
         spectrum_title.setProperty("class", "section_title")
         spectrum_layout.addWidget(spectrum_title)
+        nir_results_layout = QHBoxLayout()
+        nir_results_layout.setContentsMargins(0, 0, 0, 0)
+        nir_results_layout.setSpacing(8)
+        self.spectral_moisture_value = self._create_nir_result_card(
+            "MOISTURE CONTENT",
+            "",
+            nir_results_layout,
+        )
+        self.spectral_quality_value = self._create_nir_result_card(
+            "QUALITY (SPECTRAL)",
+            "",
+            nir_results_layout,
+        )
+        self.spectral_confidence_value = self._create_nir_result_card(
+            "CONFIDENCE",
+            "",
+            nir_results_layout,
+        )
+        spectrum_layout.addLayout(nir_results_layout)
         self.spectrum_chart = SpectrumResponseChart()
         self.spectrum_chart.setObjectName("bean_sheet_spectrum_chart")
         spectrum_layout.addWidget(self.spectrum_chart, 1)
@@ -386,6 +405,35 @@ class BeanDataSheetPage(QWidget):
     def _set_view_mode(self, view: int) -> None:
         self.summary_stack.setCurrentIndex(view)
         self.table_panel.setVisible(view == 0)
+
+    @staticmethod
+    def _create_nir_result_card(
+        title: str,
+        initial_value: str,
+        layout: QHBoxLayout,
+    ) -> QLabel:
+        result_item = QWidget()
+        result_layout = QVBoxLayout(result_item)
+        result_layout.setContentsMargins(0, 0, 0, 0)
+        result_layout.setSpacing(4)
+        label = QLabel(title)
+        label.setObjectName("bean_sheet_nir_result_label")
+        label.setWordWrap(True)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        result_layout.addWidget(label)
+
+        value_box = QFrame()
+        value_box.setObjectName("nir_reading_card")
+        value_box_layout = QVBoxLayout(value_box)
+        value_box_layout.setContentsMargins(8, 6, 8, 6)
+        value = QLabel(initial_value)
+        value.setObjectName("nir_reading_value")
+        value.setWordWrap(True)
+        value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        value_box_layout.addWidget(value)
+        result_layout.addWidget(value_box, 1)
+        layout.addWidget(result_item, 1)
+        return value
 
     def _create_beans_summary_card(self) -> QFrame:
         card = QFrame()
@@ -1041,6 +1089,24 @@ class BeanDataSheetPage(QWidget):
 
     def update_dashboard_metrics(self, metrics: Mapping[str, Any]) -> None:
         self.batch_snapshot.update(metrics)
+        moisture = _to_float(metrics.get("moisture"))
+        self.spectral_moisture_value.setText(
+            "" if moisture is None else f"{moisture:.2f}%"
+        )
+        nir_classification = str(
+            metrics.get("nir_classification") or ""
+        ).strip()
+        self.spectral_quality_value.setText(
+            nir_classification.upper()
+            if nir_classification.upper() != "UNAVAILABLE"
+            else ""
+        )
+        nir_confidence = _to_float(metrics.get("nir_confidence"))
+        self.spectral_confidence_value.setText(
+            ""
+            if nir_confidence is None
+            else f"{nir_confidence * 100:.1f}%"
+        )
         bean_id = metrics.get("bean_id")
         bean_count = int(_to_float(metrics.get("bean_count")) or 0)
         record_metrics = dict(metrics)
