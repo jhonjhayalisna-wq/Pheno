@@ -1698,8 +1698,14 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard.total_bean_count = 1
         dashboard.bean_id_sequence = 1
         dashboard.update_current_seed_id(1)
-        dashboard.quality_value.setText("GOOD")
-        dashboard.last_quality_confidence = 0.8
+        dashboard.update_quality_from_ai_result(
+            SimpleNamespace(
+                boxes=[
+                    SimpleNamespace(conf=[0.8], cls=[0]),
+                ],
+                names={0: "GOOD"},
+            )
+        )
         dashboard.current_bean_camera_quality = "GOOD"
         dashboard.good_bean_count = 1
         commands = []
@@ -1747,6 +1753,11 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(
             bean_data_page.spectral_quality_value.text(),
             "MOLDY",
+        )
+        self.assertEqual(bean_data_page.data_table.item(0, 1).text(), "GOOD")
+        self.assertEqual(
+            bean_data_page.data_table.item(0, 2).text(),
+            "80.0%",
         )
         self.assertEqual(bean_data_page.data_table.item(0, 3).text(), "MOLDY")
         self.assertEqual(bean_data_page.data_table.item(0, 4).text(), "90.0%")
