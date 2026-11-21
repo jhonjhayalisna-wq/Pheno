@@ -1405,6 +1405,25 @@ class HardwareCompatibilityTests(unittest.TestCase):
         warning.assert_called_once()
         page.close()
 
+    def test_admin_camera_stop_capture_stops_shared_dashboard_camera(self):
+        dashboard = FakeDashboard()
+        page = CameraPage(camera_controller=dashboard)
+        start_button = page.findChild(QPushButton, "start_capture_button")
+        stop_button = page.findChild(QPushButton, "stop_capture_button")
+
+        self.assertIsNotNone(start_button)
+        self.assertIsNotNone(stop_button)
+        start_button.click()
+        self.assertTrue(dashboard.camera_enabled)
+        self.assertTrue(page.camera_timer.isActive())
+
+        stop_button.click()
+
+        self.assertFalse(dashboard.camera_enabled)
+        self.assertEqual(dashboard.camera_stop_count, 1)
+        self.assertFalse(page.camera_timer.isActive())
+        page.close()
+
     def test_as7265x_parser_preserves_missing_channels_as_no_data(self):
         readings = AS7265XReader.parse_line("410nm: 1.25, 460nm: 2.50")
         self.assertEqual(len(readings), len(WAVELENGTHS))

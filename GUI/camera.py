@@ -828,6 +828,11 @@ class CameraPage(QWidget):
 
     def stop_camera(self):
         self.camera_timer.stop()
+        if (
+            self.camera_controller is not None
+            and self.camera_controller.camera_enabled
+        ):
+            self.camera_controller.stop_camera()
         if self.camera_capture is not None:
             self.camera_capture.release()
             self.camera_capture = None
