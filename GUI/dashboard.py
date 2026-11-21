@@ -1759,9 +1759,7 @@ class Dashboard(QWidget):
             self.not_good_batch_weight_grams = 0.0
 
         self.good_weight_value.setText(f"{self.good_batch_weight_grams:.2f}")
-        self.not_good_weight_value.setText(
-            f"{self.not_good_batch_weight_grams:.2f}"
-        )
+        self.bean_count_value.setText(str(total_count))
 
     def set_totals_period(self, period: str) -> None:
         if period not in ("TODAY", "THIS WEEK", "ALL TIME"):
@@ -1813,11 +1811,7 @@ class Dashboard(QWidget):
         total_value = sum(
             float(record["total_value"]) for record in filtered_batches
         )
-        good_rate = (
-            good_items / total_items * 100.0
-            if total_items > 0
-            else 0.0
-        )
+        bad_items = total_items - good_items
         avg_pns_score = (
             sum(pns_scores) / len(pns_scores)
             if pns_scores
@@ -1832,8 +1826,8 @@ class Dashboard(QWidget):
         labels: tuple[tuple[QLabel | None, str], ...] = (
             (self.batches_processed_value, str(batch_count)),
             (self.total_weight_value, f"{total_weight:.2f}"),
-            (self.total_item_count_value, str(total_items)),
-            (self.good_bean_rate_value, f"{good_rate:.2f}%"),
+            (self.total_bad_bean_value, str(bad_items)),
+            (self.total_good_bean_value, str(good_items)),
             (self.total_value_value, f"₱ {total_value:,.2f}"),
             (self.avg_pns_score_value, f"{avg_pns_score:.2f}"),
             (self.avg_moisture_value, f"{avg_moisture:.2f}%"),
@@ -2371,7 +2365,7 @@ class Dashboard(QWidget):
             self.create_card("BATCH WEIGHT", "0", "grams"),
             self.create_card("ITEM COUNT", "0", "Beans processed"),
             self.create_card("GOOD WEIGHT", "0", "grams"),
-            self.create_card("BAD WEIGHT", "0", "grams"),
+            self.create_card("BEAN COUNT", "0", "Good and bad beans"),
         ]
         batch_weight_value = self.cards[0].findChild(QLabel, "card_value")
         if batch_weight_value is None:
@@ -2388,10 +2382,11 @@ class Dashboard(QWidget):
             raise RuntimeError("The good-weight card has no value label.")
         self.good_weight_value = good_weight_value
 
-        not_good_weight_value = self.cards[3].findChild(QLabel, "card_value")
-        if not_good_weight_value is None:
-            raise RuntimeError("The not-good-weight card has no value label.")
-        self.not_good_weight_value = not_good_weight_value
+        bean_count_value = self.cards[3].findChild(QLabel, "card_value")
+        if bean_count_value is None:
+            raise RuntimeError("The bean-count card has no value label.")
+        self.bean_count_value = bean_count_value
+
         self.card_columns = 1
         self.reflow_cards(self.card_columns)
 
@@ -2434,12 +2429,12 @@ class Dashboard(QWidget):
         self.totals_cards = [
             self.create_card("BATCHES PROCESSED", "0", "batches"),
             self.create_card("TOTAL WEIGHT", "0", "grams"),
-            self.create_card("TOTAL ITEM COUNT", "0", "Beans processed"),
-            self.create_card("GOOD-BEAN RATE", "0.00%", "of items"),
+            self.create_card("TOTAL BAD BEAN", "0", "beans"),
+            self.create_card("TOTAL GOOD BEAN", "0", "beans"),
             self.create_card("TOTAL VALUE", "₱ 0.00", "peso"),
             self.create_card("AVG PNS SCORE", "0.00", "out of 100"),
             self.create_card("AVG MOISTURE", "0.00%", "content"),
-            self.create_card("FOREIGN OBJECTS", "0", "objects"),
+            self.create_card("TOTAL FOREIGN OBJECTS", "0", "objects"),
         ]
         self.batches_processed_value = self.totals_cards[0].findChild(
             QLabel, "card_value"
@@ -2447,10 +2442,10 @@ class Dashboard(QWidget):
         self.total_weight_value = self.totals_cards[1].findChild(
             QLabel, "card_value"
         )
-        self.total_item_count_value = self.totals_cards[2].findChild(
+        self.total_bad_bean_value = self.totals_cards[2].findChild(
             QLabel, "card_value"
         )
-        self.good_bean_rate_value = self.totals_cards[3].findChild(
+        self.total_good_bean_value = self.totals_cards[3].findChild(
             QLabel, "card_value"
         )
         self.total_value_value = self.totals_cards[4].findChild(
@@ -2468,8 +2463,8 @@ class Dashboard(QWidget):
         for label_name, label in (
             ("batches_processed", self.batches_processed_value),
             ("total_weight", self.total_weight_value),
-            ("total_item_count", self.total_item_count_value),
-            ("good_bean_rate", self.good_bean_rate_value),
+            ("total_bad_bean", self.total_bad_bean_value),
+            ("total_good_bean", self.total_good_bean_value),
             ("total_value", self.total_value_value),
             ("avg_pns_score", self.avg_pns_score_value),
             ("avg_moisture", self.avg_moisture_value),

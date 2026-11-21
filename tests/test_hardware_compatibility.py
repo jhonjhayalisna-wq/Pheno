@@ -5,7 +5,7 @@
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from datetime import date
+from datetime import date, datetime
 import tempfile
 import unittest
 from pathlib import Path
@@ -1112,25 +1112,69 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard.update_batch_weight_display(1.275)
 
         self.assertEqual(dashboard.batch_weight_value.text(), "1275.00")
+        self.assertEqual(len(dashboard.cards), 4)
         self.assertEqual(
-            dashboard.cards[0].findChild(QLabel, "card_title").text(),
-            "BATCH WEIGHT",
+            [
+                card.findChild(QLabel, "card_title").text()
+                for card in dashboard.cards
+            ],
+            ["BATCH WEIGHT", "ITEM COUNT", "GOOD WEIGHT", "BEAN COUNT"],
         )
-        self.assertEqual(
-            dashboard.cards[1].findChild(QLabel, "card_title").text(),
-            "ITEM COUNT",
-        )
-        self.assertEqual(
-            dashboard.cards[2].findChild(QLabel, "card_title").text(),
-            "GOOD WEIGHT",
-        )
-        self.assertEqual(
-            dashboard.cards[3].findChild(QLabel, "card_title").text(),
-            "BAD WEIGHT",
-        )
+
+        dashboard.good_bean_count = 4
+        dashboard.not_good_bean_count = 3
+        dashboard.update_quality_totals_display()
+        self.assertEqual(dashboard.bean_count_value.text(), "7")
 
         dashboard.update_batch_weight_display(None)
         self.assertEqual(dashboard.batch_weight_value.text(), "0")
+
+    def test_all_batch_totals_display_good_and_bad_bean_counts(self):
+        dashboard = Dashboard()
+        empty_defects = {key: 0 for key in dashboard.defect_counts}
+        dashboard.completed_batches = [
+            {
+                "completed_at": datetime.now(),
+                "item_count": 7,
+                "good_count": 4,
+                "weight": 100.0,
+                "foreign_objects": 0,
+                "pns_score": 80,
+                "moisture": None,
+                "total_value": 0.0,
+                "grade_counts": {"A": 4, "B": 3, "C": 0},
+                "defect_counts": dict(empty_defects),
+            },
+            {
+                "completed_at": datetime.now(),
+                "item_count": 5,
+                "good_count": 3,
+                "weight": 80.0,
+                "foreign_objects": 0,
+                "pns_score": 80,
+                "moisture": None,
+                "total_value": 0.0,
+                "grade_counts": {"A": 3, "B": 2, "C": 0},
+                "defect_counts": dict(empty_defects),
+            },
+        ]
+
+        dashboard.update_all_batches_totals_display()
+
+        self.assertEqual(
+            dashboard.totals_cards[2]
+            .findChild(QLabel, "card_title")
+            .text(),
+            "TOTAL BAD BEAN",
+        )
+        self.assertEqual(dashboard.total_bad_bean_value.text(), "5")
+        self.assertEqual(
+            dashboard.totals_cards[3]
+            .findChild(QLabel, "card_title")
+            .text(),
+            "TOTAL GOOD BEAN",
+        )
+        self.assertEqual(dashboard.total_good_bean_value.text(), "7")
 
     def test_dashboard_keeps_original_element_sizes_with_compact_spacing(self):
         scroll = QScrollArea()
