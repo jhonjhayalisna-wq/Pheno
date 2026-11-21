@@ -2079,6 +2079,50 @@ class HardwareCompatibilityTests(unittest.TestCase):
         pricing_page.deleteLater()
         bean_data_page.deleteLater()
 
+    def test_current_batch_moisture_score_uses_configured_grade_score(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        bean_data_page = window.bean_data_sheet_page
+        pricing_page = window.pricing_page
+        configured_scores = {"A": "88", "B": "77", "C": "66"}
+        for grade, score in configured_scores.items():
+            pricing_page.moisture_grade_score_inputs[grade].setText(score)
+
+        for moisture, grade in (
+            (7.0, "A"),
+            (5.0, "B"),
+            (8.0, "C"),
+        ):
+            with self.subTest(grade=grade):
+                bean_data_page.update_dashboard_metrics(
+                    {
+                        "bean_id": "moisture-grade-bean",
+                        "batch_number": 1,
+                        "bean_count": 1,
+                        "batch_weight_grams": 100.0,
+                        "moisture": moisture,
+                        "quality": "GOOD",
+                    }
+                )
+                self.assertEqual(
+                    pricing_page.current_moisture_grade,
+                    grade,
+                )
+                self.assertEqual(
+                    pricing_page.moisture_score_input.text(),
+                    configured_scores[grade],
+                )
+                self.assertEqual(
+                    bean_data_page.actual_moisture_score_value.text(),
+                    configured_scores[grade],
+                )
+
+        pricing_page.moisture_grade_score_inputs["C"].setText("65")
+        self.assertEqual(
+            bean_data_page.actual_moisture_score_value.text(),
+            "65",
+        )
+
     def test_grade_scores_are_user_entered_and_drive_pricing(self):
         page = PricingSettingsPage()
         labels = {
