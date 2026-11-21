@@ -1817,10 +1817,24 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 )
                 for index in range(page.spectrum_series.count())
             ],
-            list(zip(WAVELENGTHS, expected_values)),
+            [
+                (float(index), value)
+                for index, value in enumerate(expected_values)
+            ],
         )
-        self.assertEqual(page.wavelength_axis.min(), WAVELENGTHS[0])
-        self.assertEqual(page.wavelength_axis.max(), WAVELENGTHS[-1])
+        self.assertEqual(
+            page.wavelength_axis.categoriesLabels(),
+            [str(wavelength) for wavelength in WAVELENGTHS],
+        )
+        self.assertEqual(page.wavelength_axis.min(), 0)
+        self.assertEqual(
+            page.wavelength_axis.max(),
+            len(WAVELENGTHS) - 1,
+        )
+        self.assertEqual(
+            page.wavelength_axis.labelsPosition(),
+            page.wavelength_axis.AxisLabelsPosition.AxisLabelsPositionOnValue,
+        )
         self.assertEqual(page.intensity_axis.min(), 0)
         self.assertEqual(page.intensity_axis.max(), 250)
         self.assertEqual(page.intensity_axis.tickCount(), 6)
@@ -1916,7 +1930,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
                  page.spectrum_series.at(index).y())
                 for index in range(page.spectrum_series.count())
             ],
-            list(zip(WAVELENGTHS, values)),
+            [
+                (float(index), value)
+                for index, value in enumerate(values)
+            ],
         )
         dashboard.arduino_timer.stop()
         panel.deleteLater()
@@ -3036,7 +3053,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
                     page.spectrum_chart.spectrum_series.count()
                 )
             ],
-            list(zip(WAVELENGTHS, spectrum_values)),
+            [
+                (float(index), value)
+                for index, value in enumerate(spectrum_values)
+            ],
         )
         page.view_summary_button.click()
         self.assertEqual(page.summary_stack.currentIndex(), 0)
@@ -3120,6 +3140,16 @@ class HardwareCompatibilityTests(unittest.TestCase):
         spectrum_series = (
             window.bean_data_sheet_page.spectrum_chart.spectrum_series
         )
+        wavelength_axis = (
+            window.bean_data_sheet_page.spectrum_chart.spectrum_chart.axes(
+                Qt.Orientation.Horizontal
+            )[0]
+        )
+        self.assertEqual(
+            wavelength_axis.categoriesLabels(),
+            [str(wavelength) for wavelength in WAVELENGTHS],
+        )
+        self.assertFalse(wavelength_axis.labelsTruncated())
         self.assertEqual(
             spectrum_series.count(),
             len(WAVELENGTHS),
@@ -3129,7 +3159,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 (spectrum_series.at(index).x(), spectrum_series.at(index).y())
                 for index in range(spectrum_series.count())
             ],
-            list(zip(WAVELENGTHS, spectrum_values)),
+            [
+                (float(index), value)
+                for index, value in enumerate(spectrum_values)
+            ],
         )
         expected_direction = (
             QBoxLayout.Direction.LeftToRight

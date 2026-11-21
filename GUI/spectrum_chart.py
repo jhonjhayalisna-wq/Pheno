@@ -2,11 +2,24 @@ from collections.abc import Sequence
 
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
-from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
+from PySide6.QtCharts import (
+    QCategoryAxis,
+    QChart,
+    QChartView,
+    QLineSeries,
+    QValueAxis,
+)
 from PySide6.QtWidgets import QWidget
 
 from NIR.as7265x import NIRReading, WAVELENGTHS
 from .styles import TYPOGRAPHY_SCALE
+
+
+# Equal-width slots keep all sensor channels evenly spaced on the plot.
+_CHANNEL_POSITIONS = {
+    wavelength: index
+    for index, wavelength in enumerate(WAVELENGTHS)
+}
 
 
 class SpectrumResponseChart(QChartView):
@@ -25,14 +38,22 @@ class SpectrumResponseChart(QChartView):
         spectrum_chart.setPlotAreaBackgroundBrush(QColor("#f4f6f8"))
         spectrum_chart.setPlotAreaBackgroundVisible(True)
 
-        wavelength_axis = QValueAxis()
+        wavelength_axis = QCategoryAxis()
         wavelength_axis.setTitleText("Wavelength (nm)")
-        wavelength_axis.setRange(WAVELENGTHS[0], WAVELENGTHS[-1])
-        wavelength_axis.setTickCount(12)
-        wavelength_axis.setLabelFormat("%.0f")
+        wavelength_axis.setStartValue(-1)
+        wavelength_axis.setLabelsPosition(
+            QCategoryAxis.AxisLabelsPosition.AxisLabelsPositionOnValue
+        )
+        for index, wavelength in enumerate(WAVELENGTHS):
+            wavelength_axis.append(str(wavelength), index)
+        wavelength_axis.setRange(0, len(WAVELENGTHS) - 1)
+
         channel_font = QFont()
         channel_font.setPixelSize(round(TYPOGRAPHY_SCALE["body"] * 1.5))
-        wavelength_axis.setLabelsFont(channel_font)
+        wavelength_label_font = QFont()
+        wavelength_label_font.setPixelSize(TYPOGRAPHY_SCALE["caption"])
+        wavelength_axis.setLabelsFont(wavelength_label_font)
+        wavelength_axis.setLabelsAngle(-90)
         wavelength_axis.setTitleFont(channel_font)
         spectrum_chart.addAxis(
             wavelength_axis,
@@ -60,8 +81,14 @@ class SpectrumResponseChart(QChartView):
     def set_readings(self, readings: Sequence[NIRReading]) -> None:
         self.spectrum_series.replace(
             [
-                QPointF(reading.wavelength_nm, reading.value)
+                QPointF(
+                    _CHANNEL_POSITIONS[reading.wavelength_nm],
+                    reading.value,
+                )
                 for reading in readings
-                if reading.value is not None
+                if (
+                    reading.value is not None
+                    and reading.wavelength_nm in _CHANNEL_POSITIONS
+                )
             ]
         )
