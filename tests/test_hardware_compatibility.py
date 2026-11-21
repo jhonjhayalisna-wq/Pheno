@@ -2123,6 +2123,61 @@ class HardwareCompatibilityTests(unittest.TestCase):
             "65",
         )
 
+    def test_total_batch_price_uses_grade_scores_effects_and_batch_weight(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        bean_data_page = window.bean_data_sheet_page
+        pricing_page = window.pricing_page
+        pricing_page.base_price_input.setText("200")
+        pricing_page.moisture_effect_slider.setValue(50)
+        moisture_scores = {"A": "100", "B": "80", "C": "60"}
+        pns_scores = {"A": "100", "B": "70", "C": "40"}
+        for grade in ("A", "B", "C"):
+            pricing_page.moisture_grade_score_inputs[grade].setText(
+                moisture_scores[grade]
+            )
+            pricing_page.pns_grade_score_inputs[grade].setText(
+                pns_scores[grade]
+            )
+
+        for moisture, grade, expected_price in (
+            (7.0, "A", "₱ 10,000.00"),
+            (5.0, "B", "₱ 9,000.00"),
+            (8.0, "C", "₱ 8,000.00"),
+        ):
+            with self.subTest(grade=grade):
+                bean_data_page.update_dashboard_metrics(
+                    {
+                        "bean_id": "priced-batch-bean",
+                        "batch_number": 1,
+                        "bean_count": 1,
+                        "batch_weight_grams": 50_000.0,
+                        "moisture": moisture,
+                        "quality": "GOOD",
+                    }
+                )
+                if not pricing_page.total_price_unlocked:
+                    pricing_page.save_inputs_button.click()
+
+                self.assertEqual(
+                    pricing_page.current_moisture_grade,
+                    grade,
+                )
+                self.assertEqual(pricing_page.current_pns_grade, "A")
+                self.assertEqual(
+                    bean_data_page.actual_moisture_score_value.text(),
+                    moisture_scores[grade],
+                )
+                self.assertEqual(
+                    bean_data_page.actual_pns_score_value.text(),
+                    pns_scores["A"],
+                )
+                self.assertEqual(pricing_page.weight_input.text(), "50.000")
+                self.assertEqual(
+                    pricing_page.total_price_result.text(),
+                    expected_price,
+                )
+
     def test_grade_scores_are_user_entered_and_drive_pricing(self):
         page = PricingSettingsPage()
         labels = {
