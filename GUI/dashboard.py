@@ -723,7 +723,8 @@ class Dashboard(QWidget):
             self.best_rotation_quality = None
             self.best_rotation_confidence = -1.0
             self.bean_classification_timer.stop()
-            self.total_beans_value.setText("0")
+            self.batch_foreign_objects = 0
+            self.foreign_object_count_value.setText("0")
             self.update_quality_totals_display()
             self.update_current_seed_id(0)
             self.emit_bean_data_update()
@@ -769,7 +770,8 @@ class Dashboard(QWidget):
         self.not_good_bean_count = 0
         self.good_batch_weight_grams = 0.0
         self.not_good_batch_weight_grams = 0.0
-        self.total_beans_value.setText("0")
+        self.batch_foreign_objects = 0
+        self.foreign_object_count_value.setText("0")
         self.update_quality_totals_display()
         self.system_running = True
         self.set_ir_sample_active(True)
@@ -1157,7 +1159,6 @@ class Dashboard(QWidget):
             self.bean_id_sequence += count - self.total_bean_count
             self._reset_current_bean_readings()
         self.total_bean_count = count
-        self.total_beans_value.setText(str(count))
         self.update_current_seed_id(
             self.bean_id_sequence if count > 0 else 0
         )
@@ -1879,9 +1880,12 @@ class Dashboard(QWidget):
             return False
 
         is_good = quality == "GOOD"
+        is_foreign_object = (
+            self.current_bean_foreign_object or quality == "UNDEFINED"
+        )
         if is_good:
             command = "SORT_GOOD\n"
-        elif quality == "UNDEFINED":
+        elif is_foreign_object:
             command = "SORT_UNDEFINED\n"
         else:
             command = "SORT_NOT_GOOD\n"
@@ -1894,17 +1898,21 @@ class Dashboard(QWidget):
             self.good_bean_count += 1
             self.total_good_bean_count += 1
             self.grade_counts["A"] += 1
+            self.total_item_count += 1
+        elif is_foreign_object:
+            self.total_foreign_objects += 1
+            self.batch_foreign_objects += 1
+            self.foreign_object_count_value.setText(
+                str(self.batch_foreign_objects)
+            )
         else:
             self.not_good_bean_count += 1
+            self.total_item_count += 1
             if quality in self.defect_counts:
                 self.defect_counts[quality] += 1
                 self.grade_counts["B"] += 1
             elif quality != "UNDEFINED":
                 self.grade_counts["C"] += 1
-        self.total_item_count += 1
-        if self.current_bean_foreign_object:
-            self.total_foreign_objects += 1
-            self.batch_foreign_objects += 1
         self.update_quality_totals_display()
         self.update_all_batches_totals_display()
         self.emit_bean_data_update()
@@ -2363,8 +2371,8 @@ class Dashboard(QWidget):
 
         self.cards = [
             self.create_card("BATCH WEIGHT", "0", "grams"),
-            self.create_card("ITEM COUNT", "0", "Beans processed"),
-            self.create_card("GOOD WEIGHT", "0", "grams"),
+            self.create_card("FOREIGN OBJECT COUNT", "0", "objects"),
+            self.create_card("GOOD BEAN WEIGHT", "0", "grams"),
             self.create_card("BEAN COUNT", "0", "Good and bad beans"),
         ]
         batch_weight_value = self.cards[0].findChild(QLabel, "card_value")
@@ -2372,10 +2380,13 @@ class Dashboard(QWidget):
             raise RuntimeError("The batch-weight card has no value label.")
         self.batch_weight_value = batch_weight_value
 
-        total_beans_value = self.cards[1].findChild(QLabel, "card_value")
-        if total_beans_value is None:
-            raise RuntimeError("The total-beans card has no value label.")
-        self.total_beans_value = total_beans_value
+        foreign_object_count_value = self.cards[1].findChild(
+            QLabel,
+            "card_value",
+        )
+        if foreign_object_count_value is None:
+            raise RuntimeError("The foreign-object-count card has no value label.")
+        self.foreign_object_count_value = foreign_object_count_value
 
         good_weight_value = self.cards[2].findChild(QLabel, "card_value")
         if good_weight_value is None:

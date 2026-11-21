@@ -560,17 +560,43 @@ class HardwareCompatibilityTests(unittest.TestCase):
             )
         )
 
-    def test_unknown_camera_classification_uses_distinct_sort_command(self):
+    def test_ir_classification_counts_beans_and_foreign_objects_separately(self):
         dashboard = Dashboard()
         dashboard.arduino_serial = SimpleNamespace(is_open=True)
-        dashboard.awaiting_bean_classification = True
         commands = []
         dashboard.write_arduino_command = (
             lambda command: commands.append(command) or True
         )
 
+        dashboard.awaiting_bean_classification = True
+        self.assertTrue(dashboard._send_bean_sort_command("GOOD"))
+        self.assertEqual(dashboard.bean_count_value.text(), "1")
+        self.assertEqual(dashboard.foreign_object_count_value.text(), "0")
+
+        dashboard.awaiting_bean_classification = True
+        self.assertTrue(dashboard._send_bean_sort_command("MOLDY"))
+        self.assertEqual(dashboard.bean_count_value.text(), "2")
+        self.assertEqual(dashboard.foreign_object_count_value.text(), "0")
+
+        dashboard.awaiting_bean_classification = True
+        dashboard._reject_unclassified_bean()
+        self.assertEqual(dashboard.bean_count_value.text(), "2")
+        self.assertEqual(dashboard.foreign_object_count_value.text(), "1")
+
+        dashboard.awaiting_bean_classification = True
+        dashboard.current_bean_foreign_object = True
         self.assertTrue(dashboard._send_bean_sort_command("UNDEFINED"))
-        self.assertEqual(commands, ["SORT_UNDEFINED\n"])
+        self.assertEqual(dashboard.bean_count_value.text(), "2")
+        self.assertEqual(dashboard.foreign_object_count_value.text(), "2")
+        self.assertEqual(
+            commands,
+            [
+                "SORT_GOOD\n",
+                "SORT_NOT_GOOD\n",
+                "SORT_UNDEFINED\n",
+                "SORT_UNDEFINED\n",
+            ],
+        )
 
     def test_weight_settings_displays_live_load_cell_response(self):
         dashboard = Dashboard()
@@ -592,7 +618,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
 
     def test_ir_bean_count_messages_update_dashboard_total(self):
         dashboard = Dashboard()
-        self.assertEqual(dashboard.total_beans_value.text(), "0")
+        self.assertEqual(dashboard.total_bean_count, 0)
         commands = []
         serial_data = b"PHENOCOATER_BEAN_COUNTER_READY\n"
         dashboard.arduino_serial = SimpleNamespace(
@@ -615,7 +641,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
 
         self.assertEqual(dashboard.total_bean_count, 2)
-        self.assertEqual(dashboard.total_beans_value.text(), "2")
         self.assertEqual(
             dashboard.current_bean_id,
             f"{date.today():%Y%m%d}0002",
@@ -628,7 +653,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             read=lambda size: final_count,
         )
         dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
-        self.assertEqual(dashboard.total_beans_value.text(), "2")
+        self.assertEqual(dashboard.total_bean_count, 2)
 
         dashboard.arduino_serial = None
         dashboard.set_ir_sample_active(True)
@@ -652,7 +677,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
 
         self.assertEqual(dashboard.total_bean_count, 1)
-        self.assertEqual(dashboard.total_beans_value.text(), "1")
         self.assertEqual(
             dashboard.current_bean_id,
             f"{date.today():%Y%m%d}0001",
@@ -672,7 +696,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
 
         self.assertEqual(dashboard.total_bean_count, 2)
-        self.assertEqual(dashboard.total_beans_value.text(), "2")
 
     def test_ir_detection_event_increments_total_without_active_batch(self):
         dashboard = Dashboard()
@@ -687,7 +710,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
 
         self.assertEqual(dashboard.total_bean_count, 1)
-        self.assertEqual(dashboard.total_beans_value.text(), "1")
 
     def test_ir_detection_updates_dashboard_after_sample_start_ack(self):
         dashboard = Dashboard()
@@ -716,7 +738,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard.arduino_serial.read = lambda size: detection
         dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
 
-        self.assertEqual(dashboard.total_beans_value.text(), "1")
         self.assertEqual(dashboard.total_bean_count, 1)
 
     def test_legacy_object_count_messages_update_total_and_seed_id(self):
@@ -732,9 +753,8 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
 
         self.assertEqual(dashboard.total_bean_count, 1)
-        self.assertEqual(dashboard.total_beans_value.text(), "1")
         self.assertEqual(
-            dashboard.current_seed_value.text(),
+            dashboard.current_bean_id,
             f"{date.today():%Y%m%d}0001",
         )
 
@@ -1052,7 +1072,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertFalse(
             dashboard.update_total_bean_count("FINAL_BEAN_COUNT: 4")
         )
-        self.assertEqual(dashboard.total_beans_value.text(), "0")
+        self.assertEqual(dashboard.total_bean_count, 0)
         self.assertEqual(dashboard.current_bean_id, "0" * 12)
 
     def test_arduino_connection_does_not_start_ir_sample_automatically(self):
@@ -1086,7 +1106,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard.start_system()
         self.assertTrue(dashboard.ir_sample_requested)
         self.assertEqual(commands[-1], "START_SAMPLE\n")
-        self.assertEqual(dashboard.total_beans_value.text(), "0")
+        self.assertEqual(dashboard.total_bean_count, 0)
 
         dashboard.stop_system()
         self.assertFalse(dashboard.ir_sample_requested)
@@ -1099,9 +1119,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         dashboard.arduino_port = "COM-test"
         dashboard.read_arduino_messages(SimpleNamespace(device="COM-test"))
-        self.assertEqual(dashboard.total_beans_value.text(), "3")
+        self.assertEqual(dashboard.total_bean_count, 3)
         self.assertEqual(
-            dashboard.current_seed_value.text(),
+            dashboard.current_bean_id,
             f"{date.today():%Y%m%d}0003",
         )
 
@@ -1118,13 +1138,30 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 card.findChild(QLabel, "card_title").text()
                 for card in dashboard.cards
             ],
-            ["BATCH WEIGHT", "ITEM COUNT", "GOOD WEIGHT", "BEAN COUNT"],
+            [
+                "BATCH WEIGHT",
+                "FOREIGN OBJECT COUNT",
+                "GOOD BEAN WEIGHT",
+                "BEAN COUNT",
+            ],
         )
+
+        dashboard.awaiting_bean_classification = True
+        dashboard.current_bean_foreign_object = True
+        dashboard.arduino_serial = SimpleNamespace(is_open=True)
+        dashboard.write_arduino_command = lambda _command: True
+        self.assertTrue(dashboard._send_bean_sort_command("UNDEFINED"))
+        self.assertEqual(dashboard.foreign_object_count_value.text(), "1")
+
+        dashboard.set_ir_sample_active(True)
+        self.assertEqual(dashboard.foreign_object_count_value.text(), "0")
 
         dashboard.good_bean_count = 4
         dashboard.not_good_bean_count = 3
+        dashboard.current_batch_weight_grams = 700.0
         dashboard.update_quality_totals_display()
         self.assertEqual(dashboard.bean_count_value.text(), "7")
+        self.assertEqual(dashboard.good_weight_value.text(), "400.00")
 
         dashboard.update_batch_weight_display(None)
         self.assertEqual(dashboard.batch_weight_value.text(), "0")
