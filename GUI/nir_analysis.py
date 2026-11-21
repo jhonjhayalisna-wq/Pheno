@@ -1,9 +1,7 @@
 from collections.abc import Mapping
 from typing import Any
 
-from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
-from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -14,8 +12,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from .styles import TYPOGRAPHY_SCALE
 from NIR.as7265x import AS7265XReader, NIRReading, WAVELENGTHS
+from .spectrum_chart import SpectrumResponseChart
 
 
 class NIRAnalysisPage(QWidget):
@@ -80,53 +78,16 @@ class NIRAnalysisPage(QWidget):
         chart_header_row.addWidget(bean_id_box)
         chart_layout.addLayout(chart_header_row)
 
-        self.spectrum_series = QLineSeries()
-        self.spectrum_series.setName("AS7265X response")
-        line_pen = QPen(QColor("#2e7d4f"))
-        line_pen.setWidth(3)
-        self.spectrum_series.setPen(line_pen)
-        self.spectrum_series.setPointsVisible(True)
-
-        spectrum_chart = QChart()
-        spectrum_chart.addSeries(self.spectrum_series)
-        spectrum_chart.legend().hide()
-        spectrum_chart.setBackgroundBrush(QColor("#ffffff"))
-        spectrum_chart.setPlotAreaBackgroundBrush(QColor("#f4f6f8"))
-        spectrum_chart.setPlotAreaBackgroundVisible(True)
-
-        self.wavelength_axis = QValueAxis()
-        self.wavelength_axis.setTitleText("Wavelength (nm)")
-        self.wavelength_axis.setRange(
-            WAVELENGTHS[0],
-            WAVELENGTHS[-1],
-        )
-        self.wavelength_axis.setTickCount(12)
-        self.wavelength_axis.setLabelFormat("%.0f")
-        channel_font = QFont()
-        channel_font.setPixelSize(round(TYPOGRAPHY_SCALE["body"] * 1.5))
-        self.wavelength_axis.setLabelsFont(channel_font)
-        self.wavelength_axis.setTitleFont(channel_font)
-        spectrum_chart.addAxis(
-            self.wavelength_axis,
-            Qt.AlignmentFlag.AlignBottom,
-        )
-        self.spectrum_series.attachAxis(self.wavelength_axis)
-
-        self.intensity_axis = QValueAxis()
-        self.intensity_axis.setTitleText("Intensity")
-        self.intensity_axis.setRange(0, 250)
-        self.intensity_axis.setTickCount(6)
-        self.intensity_axis.setLabelFormat("%.0f")
-        self.intensity_axis.setLabelsFont(channel_font)
-        self.intensity_axis.setTitleFont(channel_font)
-        spectrum_chart.addAxis(self.intensity_axis, Qt.AlignmentFlag.AlignLeft)
-        self.spectrum_series.attachAxis(self.intensity_axis)
-
-        spectrum_view = QChartView(spectrum_chart)
-        spectrum_view.setObjectName("nir_spectrum_chart")
-        spectrum_view.setRenderHint(QPainter.RenderHint.Antialiasing)
-        spectrum_view.setMinimumHeight(450)
-        self.spectrum_chart = spectrum_chart
+        self.spectrum_chart_view = SpectrumResponseChart()
+        self.spectrum_series = self.spectrum_chart_view.spectrum_series
+        self.spectrum_chart = self.spectrum_chart_view.spectrum_chart
+        self.wavelength_axis = self.spectrum_chart.axes(
+            Qt.Orientation.Horizontal
+        )[0]
+        self.intensity_axis = self.spectrum_chart.axes(
+            Qt.Orientation.Vertical
+        )[0]
+        spectrum_view = self.spectrum_chart_view
         chart_layout.addWidget(spectrum_view)
         top.addWidget(chart_panel, 3)
 
@@ -252,12 +213,7 @@ class NIRAnalysisPage(QWidget):
         self.serial_output.ensureCursorVisible()
 
     def update_spectrum_chart(self):
-        points = [
-            QPointF(reading.wavelength_nm, reading.value)
-            for reading in self.readings
-            if reading.value is not None
-        ]
-        self.spectrum_series.replace(points)
+        self.spectrum_chart_view.set_readings(self.readings)
 
     def append_reading_row(self) -> None:
         row = self.table.rowCount()

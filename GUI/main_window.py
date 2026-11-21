@@ -196,6 +196,9 @@ class MainWindow(QMainWindow):
         self.dashboard_page.bean_data_updated.connect(
             self.bean_data_sheet_page.update_dashboard_metrics
         )
+        self.dashboard_page.nir_message_received.connect(
+            self.bean_data_sheet_page.append_nir_spectrum_line
+        )
         bean_data_sheet_scroll = QScrollArea()
         bean_data_sheet_scroll.setObjectName('bean_data_sheet_scroll')
         bean_data_sheet_scroll.setWidgetResizable(True)

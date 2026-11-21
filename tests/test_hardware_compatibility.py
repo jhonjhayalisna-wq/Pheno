@@ -2752,6 +2752,37 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page.view_sensor_button.click()
         self.assertEqual(page.summary_stack.currentIndex(), 1)
         self.assertTrue(table_panel.isHidden())
+        self.assertIsNotNone(
+            page.findChild(QWidget, "bean_sheet_spectrum_chart")
+        )
+        spectrum_values = [
+            float(index + 1) for index in range(len(WAVELENGTHS))
+        ]
+        page.append_nir_spectrum_line(
+            " | ".join(
+                f"{wavelength}nm: {value:.2f}"
+                for wavelength, value in zip(
+                    WAVELENGTHS,
+                    spectrum_values,
+                )
+            )
+        )
+        self.assertEqual(
+            page.spectrum_chart.spectrum_series.count(),
+            len(WAVELENGTHS),
+        )
+        self.assertEqual(
+            [
+                (
+                    page.spectrum_chart.spectrum_series.at(index).x(),
+                    page.spectrum_chart.spectrum_series.at(index).y(),
+                )
+                for index in range(
+                    page.spectrum_chart.spectrum_series.count()
+                )
+            ],
+            list(zip(WAVELENGTHS, spectrum_values)),
+        )
         page.view_summary_button.click()
         self.assertEqual(page.summary_stack.currentIndex(), 0)
         self.assertFalse(table_panel.isHidden())
@@ -2822,6 +2853,29 @@ class HardwareCompatibilityTests(unittest.TestCase):
         window.change_page(1)
         window.show()
         self.application.processEvents()
+        window.bean_data_sheet_page.view_sensor_button.click()
+        spectrum_values = [
+            float(index + 1) for index in range(len(WAVELENGTHS))
+        ]
+        scan_line = " | ".join(
+            f"{wavelength}nm: {value:.2f}"
+            for wavelength, value in zip(WAVELENGTHS, spectrum_values)
+        )
+        window.dashboard_page.nir_message_received.emit(scan_line)
+        spectrum_series = (
+            window.bean_data_sheet_page.spectrum_chart.spectrum_series
+        )
+        self.assertEqual(
+            spectrum_series.count(),
+            len(WAVELENGTHS),
+        )
+        self.assertEqual(
+            [
+                (spectrum_series.at(index).x(), spectrum_series.at(index).y())
+                for index in range(spectrum_series.count())
+            ],
+            list(zip(WAVELENGTHS, spectrum_values)),
+        )
         expected_direction = (
             QBoxLayout.Direction.LeftToRight
             if window.bean_data_sheet_page.width() >= 860
@@ -3625,6 +3679,19 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(
             panel.SECTION_NAMES[:3],
             ("System Overview", "Camera", "NIR Analysis"),
+        )
+        self.assertEqual(
+            tuple(button.text() for button in panel.navigation_buttons),
+            (
+                "SYSTEM OVERVIEW",
+                "CAMERA",
+                "NIR ANALYSIS",
+                "WEIGHT SETTINGS",
+                "SYSTEM SETTINGS",
+                "DEBUG LOGS",
+                "HISTORY",
+                "CREATE ADMIN",
+            ),
         )
         self.assertEqual(panel.stack.count(), len(panel.SECTION_NAMES))
         history_index = panel.SECTION_NAMES.index("History")

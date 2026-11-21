@@ -643,7 +643,7 @@ class AdminControlPanel(QMainWindow):
             label = {
                 "Process Monitor / Debug Logs": "Debug Logs",
                 "Create Admin Account": "Create Admin",
-            }.get(name, name)
+            }.get(name, name).upper()
             button = QPushButton(label)
             button.setObjectName("admin_navigation_button")
             button.setCheckable(True)

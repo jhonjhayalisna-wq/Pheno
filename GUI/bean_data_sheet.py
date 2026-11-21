@@ -34,6 +34,8 @@ from .quality import (
     normalize_quality_category,
     pns_grade_from_weighted_count,
 )
+from .spectrum_chart import SpectrumResponseChart
+from NIR.as7265x import AS7265XReader
 
 
 def _to_float(value: Any) -> float | None:
@@ -161,6 +163,7 @@ class BeanDataSheetPage(QWidget):
             "nir_confidence": None,
         }
         self.live_camera_widget: QWidget | None = None
+        self.nir_reader = AS7265XReader()
         self._setup_ui()
 
     def _setup_ui(self):
@@ -261,7 +264,20 @@ class BeanDataSheetPage(QWidget):
 
         sensor_view = QWidget()
         sensor_view.setObjectName("bean_sheet_sensor_view")
-        self.camera_layout = QVBoxLayout(sensor_view)
+        self.sensor_content_layout = QBoxLayout(
+            QBoxLayout.Direction.LeftToRight,
+            sensor_view,
+        )
+        self.sensor_content_layout.setContentsMargins(0, 0, 0, 0)
+        self.sensor_content_layout.setSpacing(8)
+
+        camera_panel = QFrame()
+        camera_panel.setObjectName("bean_sheet_camera_panel")
+        camera_panel.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self.camera_layout = QVBoxLayout(camera_panel)
         self.camera_layout.setContentsMargins(0, 0, 0, 0)
         self.sensor_empty_state = QLabel("Sensor preview is unavailable.")
         self.sensor_empty_state.setObjectName(
@@ -269,6 +285,21 @@ class BeanDataSheetPage(QWidget):
         )
         self.sensor_empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.camera_layout.addWidget(self.sensor_empty_state)
+
+        spectrum_panel = QFrame()
+        spectrum_panel.setObjectName("settings_panel")
+        spectrum_layout = QVBoxLayout(spectrum_panel)
+        spectrum_layout.setContentsMargins(10, 10, 10, 10)
+        spectrum_layout.setSpacing(8)
+        spectrum_title = QLabel("Spectral Response")
+        spectrum_title.setProperty("class", "section_title")
+        spectrum_layout.addWidget(spectrum_title)
+        self.spectrum_chart = SpectrumResponseChart()
+        self.spectrum_chart.setObjectName("bean_sheet_spectrum_chart")
+        spectrum_layout.addWidget(self.spectrum_chart, 1)
+
+        self.sensor_content_layout.addWidget(camera_panel, 1)
+        self.sensor_content_layout.addWidget(spectrum_panel, 2)
         self.summary_stack.addWidget(sensor_view)
         layout.addWidget(self.summary_stack)
 
@@ -892,6 +923,13 @@ class BeanDataSheetPage(QWidget):
                 else QBoxLayout.Direction.TopToBottom
             )
             self.summary_content_layout.setDirection(direction)
+        if hasattr(self, "sensor_content_layout"):
+            direction = (
+                QBoxLayout.Direction.LeftToRight
+                if self.width() >= 1000
+                else QBoxLayout.Direction.TopToBottom
+            )
+            self.sensor_content_layout.setDirection(direction)
 
     def set_live_camera_widget(self, widget: QWidget) -> None:
         if self.live_camera_widget is not None:
@@ -902,6 +940,11 @@ class BeanDataSheetPage(QWidget):
         self.sensor_empty_state.setParent(None)
         self.live_camera_widget = widget
         self.camera_layout.addWidget(widget)
+
+    def append_nir_spectrum_line(self, line: str) -> None:
+        if "nm:" not in line:
+            return
+        self.spectrum_chart.set_readings(self.nir_reader.parse_line(line))
 
     def update_pricing_summary(
         self,
