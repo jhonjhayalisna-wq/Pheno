@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -48,6 +47,15 @@ STABILITY_WINDOW = 5
 class CameraPage(QWidget):
     final_result_changed = Signal(str)
     EMEET_CAMERA_INDEX = 0
+    focus_slider: QSlider
+    exposure_slider: QSlider
+    gain_slider: QSlider
+    white_balance_slider: QSlider
+    brightness_slider: QSlider
+    contrast_slider: QSlider
+    hue_slider: QSlider
+    saturation_slider: QSlider
+    sharpness_slider: QSlider
 
     def __init__(self, camera_source=EMEET_CAMERA_INDEX, camera_controller=None):
         super().__init__()
@@ -733,7 +741,7 @@ class CameraPage(QWidget):
             self._set_camera_control(property_id, value)
 
     def load_model(self):
-        self.model, _model_file = load_yolo_model()
+        self.model = load_yolo_model()[0]
 
     def _camera_controls_for_start(self):
         return camera_controls_for_start(self.camera_control_values)
@@ -914,7 +922,7 @@ class CameraPage(QWidget):
             self.set_final_result("NO DETECTION")
             return
 
-        confidence, label, _ = detection
+        _, label, _ = detection
         if previous_detection is None:
             self.bean_count += 1
             self.current_bean_id = self.bean_count

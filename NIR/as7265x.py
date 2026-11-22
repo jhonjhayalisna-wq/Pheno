@@ -31,7 +31,7 @@ class AS7265XReader:
     @staticmethod
     def parse_line(line: str) -> list[NIRReading]:
         readings = []
-        values = {channel: None for channel in _CHANNELS}
+        values: dict[str, float | None] = {channel: None for channel in _CHANNELS}
         for match in re.finditer(r"(\d+)nm:\s*([-+]?\d*\.?\d+)", line):
             wavelength = int(match.group(1))
             value = float(match.group(2))
