@@ -3913,7 +3913,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         page.deleteLater()
 
-    def test_current_batch_pns_grade_uses_count_to_weight_ratio(self):
+    def test_current_batch_pns_grade_uses_good_beans_only(self):
         page = BeanDataSheetPage()
         self.assertEqual(page.pns_grade_value.text(), "")
         expected_grades = {
@@ -3929,7 +3929,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                     "bean_count": bean_count,
                     "batch_number": 1,
                     "batch_weight_grams": 100.0,
-                    "quality": "MOLDY",
+                    "quality": "GOOD",
                 }
             )
             if bean_count in expected_grades:
@@ -3937,6 +3937,50 @@ class HardwareCompatibilityTests(unittest.TestCase):
                     page.pns_grade_value.text(),
                     expected_grades[bean_count],
                 )
+            if bean_count == 100:
+                for extra_count in range(101, 131):
+                    page.update_dashboard_metrics(
+                        {
+                            "bean_id": f"bad-bean-{extra_count}",
+                            "bean_count": extra_count,
+                            "batch_number": 1,
+                            "batch_weight_grams": 100.0,
+                            "quality": "MOLDY",
+                        }
+                    )
+                page.update_dashboard_metrics(
+                    {
+                        "bean_id": "foreign-object-1",
+                        "bean_count": 131,
+                        "batch_number": 1,
+                        "batch_weight_grams": 100.0,
+                        "quality": "FOREIGN OBJECT",
+                    }
+                )
+                self.assertEqual(page.good_bean_count_value.text(), "100")
+                self.assertEqual(page.pns_grade_value.text(), "A")
+        page.deleteLater()
+
+    def test_current_batch_pns_grade_uses_displayed_good_bean_count(self):
+        page = BeanDataSheetPage()
+        metrics = {
+            "bean_id": "bean-1",
+            "bean_count": 1,
+            "batch_number": 1,
+            "batch_weight_grams": 100.0,
+            "quality": "MOLDY",
+            "good_bean_count": 100,
+            "not_good_bean_count": 30,
+        }
+        page.update_dashboard_metrics(metrics)
+        self.assertEqual(page.good_bean_count_value.text(), "100")
+        self.assertEqual(page.bad_bean_count_value.text(), "30")
+        self.assertEqual(page.pns_grade_value.text(), "A")
+
+        page.update_dashboard_metrics(
+            {**metrics, "good_bean_count": 121}
+        )
+        self.assertEqual(page.pns_grade_value.text(), "C")
         page.deleteLater()
 
     def test_pns_history_grade_uses_measured_sample_weight(self):

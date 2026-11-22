@@ -1215,12 +1215,29 @@ class BeanDataSheetPage(QWidget):
         # PNS grade and bean count are scoped to this measured batch.
         history_rows = self._pns_sample_rows()
         batch_bean_count = len(current_records)
+        quality_counts = self._quality_counts(current_records)
+        reported_good_count = _to_float(metrics.get("good_bean_count"))
+        reported_bad_count = _to_float(
+            metrics.get("not_good_bean_count")
+        )
+        good_bean_count = (
+            int(reported_good_count)
+            if (
+                reported_good_count is not None
+                and reported_bad_count is not None
+                and reported_good_count >= 0
+                and reported_bad_count >= 0
+                and reported_good_count.is_integer()
+                and reported_bad_count.is_integer()
+            )
+            else quality_counts["GOOD"]
+        )
         pns_grade = (
             pns_grade_from_weighted_count(
-                batch_bean_count,
+                good_bean_count,
                 batch_weight,
             )
-            if batch_bean_count > 0
+            if good_bean_count > 0
             else ""
         )
         self.pns_grade_value.setText(pns_grade)
@@ -1257,11 +1274,6 @@ class BeanDataSheetPage(QWidget):
             ""
             if passed_average_moisture is None
             else f"{passed_average_moisture:.2f}%"
-        )
-        quality_counts = self._quality_counts(current_records)
-        reported_good_count = _to_float(metrics.get("good_bean_count"))
-        reported_bad_count = _to_float(
-            metrics.get("not_good_bean_count")
         )
         if (
             reported_good_count is not None
