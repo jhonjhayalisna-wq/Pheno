@@ -366,6 +366,8 @@ class Dashboard(QWidget):
         self.awaiting_bean_classification = False
         self.best_rotation_quality: str | None = None
         self.best_rotation_confidence = -1.0
+        self.rotation_quality_counts: dict[str, int] = {}
+        self.rotation_quality_confidences: dict[str, float] = {}
         self.last_quality_confidence = 0.0
         self.ir_sample_requested = False
         self.ir_sample_command_sent = False
@@ -379,11 +381,6 @@ class Dashboard(QWidget):
         self.servo_maximum_angles: dict[int, int] = {1: 160, 2: 160}
         self.servo_sweep_speeds: dict[int, int] = {1: 45, 2: 45}
         self.servo_sweeping: dict[int, bool] = {1: False, 2: False}
-        self.bean_classification_timer = QTimer(self)
-        self.bean_classification_timer.setSingleShot(True)
-        self.bean_classification_timer.timeout.connect(
-            self._reject_unclassified_bean
-        )
 
         self.camera_modes: dict[str, dict[str, Any]] = {
             "Camera": {
@@ -616,15 +613,11 @@ class Dashboard(QWidget):
                         self.awaiting_bean_classification = False
                         self.best_rotation_quality = None
                         self.best_rotation_confidence = -1.0
+                        self.rotation_quality_counts.clear()
+                        self.rotation_quality_confidences.clear()
                         self.current_bean_camera_quality = None
                     elif message == "BEAN_READY_FOR_CLASSIFICATION":
-                        self.bean_rotation_active = False
-                        self.awaiting_bean_classification = True
-                        self.bean_classification_timer.start(1500)
-                        if self.best_rotation_quality is not None:
-                            self._send_bean_sort_command(
-                                self.best_rotation_quality
-                            )
+                        self._handle_bean_ready_for_classification()
                     if message.startswith("IR_SENSOR_STATUS:"):
                         status = message.partition(":")[2].strip().upper()
                         if status in ("DISCONNECTED", "OFF", "NOT_CONNECTED"):
@@ -722,7 +715,8 @@ class Dashboard(QWidget):
             self.awaiting_bean_classification = False
             self.best_rotation_quality = None
             self.best_rotation_confidence = -1.0
-            self.bean_classification_timer.stop()
+            self.rotation_quality_counts.clear()
+            self.rotation_quality_confidences.clear()
             self.batch_foreign_objects = 0
             self.foreign_object_count_value.setText("0")
             self.update_quality_totals_display()
@@ -783,7 +777,6 @@ class Dashboard(QWidget):
 
     def stop_system(self) -> None:
         self.set_ir_sample_active(False)
-        self.bean_classification_timer.stop()
         self.bean_rotation_active = False
         self.awaiting_bean_classification = False
         self.stop_camera()
@@ -1737,9 +1730,26 @@ class Dashboard(QWidget):
         self.quality_value.setText(quality)
         self.update_quality_totals_display()
         self.emit_bean_data_update()
-        if self.bean_rotation_active and confidence > self.best_rotation_confidence:
-            self.best_rotation_quality = quality
-            self.best_rotation_confidence = confidence
+        if self.bean_rotation_active and quality != "UNDEFINED":
+            self.rotation_quality_counts[quality] = (
+                self.rotation_quality_counts.get(quality, 0) + 1
+            )
+            self.rotation_quality_confidences[quality] = max(
+                self.rotation_quality_confidences.get(quality, -1.0),
+                confidence,
+            )
+            self.best_rotation_quality = max(
+                self.rotation_quality_counts,
+                key=lambda category: (
+                    self.rotation_quality_counts[category],
+                    self.rotation_quality_confidences[category],
+                ),
+            )
+            self.best_rotation_confidence = (
+                self.rotation_quality_confidences[
+                    self.best_rotation_quality
+                ]
+            )
         if self.awaiting_bean_classification and quality != "UNDEFINED":
             self._send_bean_sort_command(quality)
         return quality
@@ -1892,7 +1902,6 @@ class Dashboard(QWidget):
         if not self.write_arduino_command(command):
             return False
         self.current_bean_camera_quality = quality
-        self.bean_classification_timer.stop()
         self.awaiting_bean_classification = False
         if is_good:
             self.good_bean_count += 1
@@ -2030,9 +2039,17 @@ class Dashboard(QWidget):
         if not self.awaiting_bean_classification:
             return
         self.system_log_received.emit(
-            "No valid camera classification arrived; routing bean to not-good."
+            "No valid camera classification arrived; routing bean as undefined."
         )
         self._send_bean_sort_command("UNDEFINED")
+
+    def _handle_bean_ready_for_classification(self) -> None:
+        self.bean_rotation_active = False
+        self.awaiting_bean_classification = True
+        if self.best_rotation_quality is not None:
+            self._send_bean_sort_command(self.best_rotation_quality)
+        else:
+            self._reject_unclassified_bean()
 
     def load_ai_model(
         self,

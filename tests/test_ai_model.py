@@ -368,6 +368,64 @@ class AiModelIntegrationTests(unittest.TestCase):
         dashboard.arduino_timer.stop()
         dashboard.close()
 
+    def test_dashboard_uses_most_frequent_quality_during_rotation(self):
+        class FakeBox:
+            def __init__(self, confidence, class_id):
+                self.conf = [confidence]
+                self.cls = [class_id]
+
+        class FakeResult:
+            names = {0: "good", 1: "moldy"}
+
+            def __init__(self, confidence, class_id):
+                self.boxes = [FakeBox(confidence, class_id)]
+
+        with patch(
+            "GUI.dashboard.load_yolo_model",
+            return_value=(None, bundled_model_file()),
+        ):
+            with patch.object(Dashboard, "update_arduino_status"):
+                dashboard = Dashboard()
+
+        dashboard.bean_rotation_active = True
+        for confidence, class_id in (
+            (0.99, 0),
+            (0.90, 1),
+            (0.20, 1),
+            (0.30, 0),
+            (0.10, 0),
+        ):
+            dashboard.update_quality_from_ai_result(
+                FakeResult(confidence, class_id)
+            )
+
+        self.assertEqual(dashboard.rotation_quality_counts, {
+            "GOOD": 3,
+            "MOLDY": 2,
+        })
+        self.assertEqual(dashboard.best_rotation_quality, "GOOD")
+        dashboard.arduino_timer.stop()
+        dashboard.close()
+
+    def test_dashboard_does_not_wait_when_rotation_has_no_valid_classification(self):
+        with patch(
+            "GUI.dashboard.load_yolo_model",
+            return_value=(None, bundled_model_file()),
+        ):
+            with patch.object(Dashboard, "update_arduino_status"):
+                dashboard = Dashboard()
+
+        with patch.object(
+            dashboard,
+            "_reject_unclassified_bean",
+        ) as reject_unclassified:
+            dashboard._handle_bean_ready_for_classification()
+
+        reject_unclassified.assert_called_once_with()
+        self.assertTrue(dashboard.awaiting_bean_classification)
+        dashboard.arduino_timer.stop()
+        dashboard.close()
+
     def test_dashboard_prioritizes_low_confidence_foreign_object(self):
         class FakeBox:
             def __init__(self, confidence, class_id):
