@@ -100,12 +100,9 @@ class HistoryPage(QWidget):
         root_layout.setContentsMargins(14, 12, 14, 14)
         root_layout.setSpacing(8)
 
-        title = QLabel("History")
+        title = QLabel("HISTORY")
         title.setObjectName("page_title")
-        subtitle = QLabel("Review past sorting batches and their results.")
-        subtitle.setObjectName("settings_description")
         root_layout.addWidget(title)
-        root_layout.addWidget(subtitle)
 
         self.views = QStackedWidget()
         self.views.setObjectName("history_views")

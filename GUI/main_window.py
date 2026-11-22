@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(12, 6, 12, 6)
 
-        page_title = QLabel('PhenoCoater Control Panel')
+        page_title = QLabel('PHENOCOATER CONTROL PANEL')
         page_title.setObjectName('page_title')
         header_layout.addWidget(page_title)
         header_layout.addStretch()

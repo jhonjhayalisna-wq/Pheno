@@ -2260,9 +2260,9 @@ class Dashboard(QWidget):
             return
         self.camera_usage_button.setChecked(self.camera_usage_enabled)
         self.camera_usage_button.setText(
-            "Camera Usage: Enabled"
+            "CAMERA USAGE: ENABLED"
             if self.camera_usage_enabled
-            else "Camera Usage: Disabled"
+            else "CAMERA USAGE: DISABLED"
         )
         self.camera_usage_button.setProperty(
             "camera_usage_enabled",

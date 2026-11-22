@@ -37,11 +37,11 @@ class ResultsPage(QWidget):
 
         response_header = QHBoxLayout()
         response_header.setContentsMargins(0, 0, 0, 0)
-        response_label = QLabel("Arduino Serial Monitor")
+        response_label = QLabel("ARDUINO SERIAL MONITOR")
         response_label.setObjectName("weight_response_label")
         response_header.addWidget(response_label)
         response_header.addStretch()
-        self.clear_monitor_button = QPushButton("Clear")
+        self.clear_monitor_button = QPushButton("CLEAR")
         self.clear_monitor_button.setObjectName("weight_clear_monitor")
         self.clear_monitor_button.clicked.connect(
             lambda: self.load_cell_response.clear()
@@ -55,7 +55,7 @@ class ResultsPage(QWidget):
         self.load_cell_response.setMinimumHeight(220)
         self.load_cell_response.setMaximumBlockCount(1000)
         self.load_cell_response.setPlaceholderText(
-            "Arduino responses and load-cell readings will appear here."
+            "ARDUINO RESPONSES AND LOAD-CELL READINGS WILL APPEAR HERE."
         )
         monitor_layout.addWidget(self.load_cell_response)
 
@@ -64,13 +64,13 @@ class ResultsPage(QWidget):
         self.serial_command_input = QLineEdit()
         self.serial_command_input.setObjectName("weight_serial_command_input")
         self.serial_command_input.setPlaceholderText(
-            "Enter Arduino command (for example: C, K1,100.00)"
+            "ENTER ARDUINO COMMAND (FOR EXAMPLE: C, K1,100.00)"
         )
         self.serial_command_input.returnPressed.connect(
             self.send_serial_command
         )
         serial_input_layout.addWidget(self.serial_command_input, 1)
-        self.send_serial_button = QPushButton("Send")
+        self.send_serial_button = QPushButton("SEND")
         self.send_serial_button.setObjectName("weight_send_serial")
         self.send_serial_button.clicked.connect(
             self.send_serial_command

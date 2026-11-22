@@ -137,15 +137,12 @@ class SettingsPage(QWidget):
 
         header = QHBoxLayout()
         title_column = QVBoxLayout()
-        title_label = QLabel("Settings")
+        title_label = QLabel("SYSTEM SETTINGS")
         title_label.setObjectName("page_title")
-        description_label = QLabel("Configure connections and sensor settings.")
-        description_label.setObjectName("settings_description")
         title_column.addWidget(title_label)
-        title_column.addWidget(description_label)
         header.addLayout(title_column)
         header.addStretch()
-        camera_usage_button = AnimatedButton("Camera Usage: Enabled")
+        camera_usage_button = AnimatedButton("CAMERA USAGE: ENABLED")
         camera_usage_button.setObjectName("camera_usage_button")
         camera_usage_button.setCheckable(True)
         camera_usage_button.setChecked(
@@ -163,15 +160,15 @@ class SettingsPage(QWidget):
         connection_form.setVerticalSpacing(8)
         port_input = QComboBox()
         self.arduino_port_input = port_input
-        add_centered_form_row(connection_form, "Arduino", port_input)
+        add_centered_form_row(connection_form, "ARDUINO", port_input)
         baud_input = QLineEdit()
         baud_input.setReadOnly(True)
         self.baud_rate_input = baud_input
-        add_centered_form_row(connection_form, "Baud rate", baud_input)
+        add_centered_form_row(connection_form, "BAUD RATE", baud_input)
         camera_input = QLineEdit()
         camera_input.setReadOnly(True)
         self.camera_source_input = camera_input
-        add_centered_form_row(connection_form, "Camera source", camera_input)
+        add_centered_form_row(connection_form, "CAMERA SOURCE", camera_input)
         model_path_input = QLineEdit(str(configured_yolo_model_file()))
         model_path_input.setReadOnly(True)
         self.ai_model_path_input = model_path_input
@@ -181,7 +178,7 @@ class SettingsPage(QWidget):
         browse_model_button.setObjectName("ai_model_browse_button")
         browse_model_button.clicked.connect(self._browse_ai_model_file)
         model_path_row.addWidget(browse_model_button)
-        add_centered_form_row(connection_form, "YOLO model weights", model_path_row)
+        add_centered_form_row(connection_form, "YOLO MODEL WEIGHTS", model_path_row)
         connection_panel = QFrame()
         connection_panel.setObjectName("settings_panel")
         connection_panel.setLayout(connection_form)
@@ -197,15 +194,15 @@ class SettingsPage(QWidget):
         weight_input.setRange(-1000000, 1000000)
         weight_input.setDecimals(3)
         weight_input.setSuffix(" g")
-        add_centered_form_row(sensor_form, "Load cell offset", weight_input)
+        add_centered_form_row(sensor_form, "LOAD CELL OFFSET", weight_input)
         moisture_status = QLabel(
-            "Not available: a calibrated NIR moisture model is required."
+            "NOT AVAILABLE: A CALIBRATED NIR MOISTURE MODEL IS REQUIRED."
         )
         moisture_status.setObjectName("moisture_estimation_status")
         moisture_status.setWordWrap(True)
         add_centered_form_row(
             sensor_form,
-            "Moisture estimation",
+            "MOISTURE ESTIMATION",
             moisture_status,
         )
         sensor_panel = QFrame()
@@ -223,26 +220,26 @@ class SettingsPage(QWidget):
         save_state.setObjectName("settings_save_state")
         if getattr(self.camera_controller, "ai_model_error", ""):
             save_state.setText(
-                f"AI model not ready: "
+                f"AI MODEL NOT READY: "
                 f"{self.camera_controller.ai_model_error}"
             )
         elif getattr(self.camera_controller, "ai_model_warning", ""):
             save_state.setText(
-                f"AI model coverage warning: "
+                f"AI MODEL COVERAGE WARNING: "
                 f"{self.camera_controller.ai_model_warning}"
             )
 
         def reset_settings():
             if self.permission_check is not None and not self.permission_check():
-                save_state.setText("Administrator access required")
+                save_state.setText("ADMINISTRATOR ACCESS REQUIRED")
                 return
             self.refresh_live_settings()
             weight_input.setValue(0)
-            save_state.setText("Settings reset")
+            save_state.setText("SETTINGS RESET")
 
         def save_settings():
             if self.permission_check is not None and not self.permission_check():
-                save_state.setText("Administrator access required")
+                save_state.setText("ADMINISTRATOR ACCESS REQUIRED")
                 return
             model_path = self.ai_model_path_input.text().strip()
             if self.camera_controller is not None:
@@ -254,13 +251,13 @@ class SettingsPage(QWidget):
                 if set_model_file is not None:
                     if not set_model_file(model_path):
                         save_state.setText(
-                            "AI model not loaded: "
+                            "AI MODEL NOT LOADED: "
                             f"{self.camera_controller.ai_model_error}"
                         )
                         return
                 else:
                     save_state.setText(
-                        "AI model selection is unavailable."
+                        "AI MODEL SELECTION IS UNAVAILABLE."
                     )
                     return
             else:
@@ -271,7 +268,7 @@ class SettingsPage(QWidget):
                 )
                 if not selected_model.is_file():
                     save_state.setText(
-                        f"AI model file not found: {selected_model}"
+                        f"AI MODEL FILE NOT FOUND: {selected_model}"
                     )
                     return
                 save_yolo_model_file(
@@ -280,7 +277,7 @@ class SettingsPage(QWidget):
                     == bundled_model_file().resolve()
                     else selected_model
                 )
-            save_state.setText("Settings saved")
+            save_state.setText("SETTINGS SAVED")
             model_warning = getattr(
                 self.camera_controller,
                 "ai_model_warning",
@@ -288,7 +285,7 @@ class SettingsPage(QWidget):
             )
             if model_warning:
                 save_state.setText(
-                    f"Settings saved. AI model coverage warning: "
+                    f"SETTINGS SAVED. AI MODEL COVERAGE WARNING: "
                     f"{model_warning}"
                 )
 

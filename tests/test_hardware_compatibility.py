@@ -108,18 +108,18 @@ class FakeDashboard(QWidget):
         if button is not None:
             button.setChecked(self.camera_usage_enabled)
             button.setText(
-                "Camera Usage: Enabled"
+                "CAMERA USAGE: ENABLED"
                 if self.camera_usage_enabled
-                else "Camera Usage: Disabled"
+                else "CAMERA USAGE: DISABLED"
             )
 
     def set_camera_usage_enabled(self, enabled):
         self.camera_usage_enabled = enabled
         if self.camera_button is not None:
             self.camera_button.setText(
-                "Camera Usage: Enabled"
+                "CAMERA USAGE: ENABLED"
                 if enabled
-                else "Camera Usage: Disabled"
+                else "CAMERA USAGE: DISABLED"
             )
         if not enabled:
             self.stop_camera()
@@ -314,6 +314,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
             .font()
             .pixelSize(),
             42,
+        )
+        self.assertEqual(
+            window.header.findChild(QLabel, "page_title").text(),
+            "PHENOCOATER CONTROL PANEL",
         )
         self.assertEqual(window.status_text.font().pixelSize(), 20)
         self.assertEqual(
@@ -1328,7 +1332,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
 
         self.assertTrue(button.isCheckable())
         self.assertTrue(button.isChecked())
-        self.assertEqual(button.text(), "Camera Usage: Enabled")
+        self.assertEqual(button.text(), "CAMERA USAGE: ENABLED")
         self.assertFalse(dashboard.camera_enabled)
         self.assertEqual(dashboard.camera_start_count, 0)
 
@@ -1336,13 +1340,13 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertFalse(dashboard.camera_usage_enabled)
         self.assertFalse(dashboard.camera_enabled)
         self.assertEqual(dashboard.camera_start_count, 0)
-        self.assertEqual(button.text(), "Camera Usage: Disabled")
+        self.assertEqual(button.text(), "CAMERA USAGE: DISABLED")
 
         button.click()
         self.assertTrue(dashboard.camera_usage_enabled)
         self.assertFalse(dashboard.camera_enabled)
         self.assertEqual(dashboard.camera_start_count, 0)
-        self.assertEqual(button.text(), "Camera Usage: Enabled")
+        self.assertEqual(button.text(), "CAMERA USAGE: ENABLED")
 
         dashboard.set_camera_usage_enabled(False)
         dashboard.start_camera()
@@ -1639,17 +1643,14 @@ class HardwareCompatibilityTests(unittest.TestCase):
         page = NIRAnalysisPage()
         self.addCleanup(page.close)
 
-        subtitle = next(
-            label
-            for label in page.findChildren(QLabel)
-            if label.text() == "Spectral scan and bean classification"
-        )
-        self.assertIsNotNone(subtitle)
-        self.assertEqual(page.moisture_content_value.text(), "Not available")
+        title = page.findChild(QLabel, "page_title")
+        self.assertIsNotNone(title)
+        self.assertEqual(title.text(), "NIR ANALYSIS")
+        self.assertEqual(page.moisture_content_value.text(), "NOT AVAILABLE")
 
         page.update_bean_data({"bean_id": "bean-1", "moisture": None})
 
-        self.assertEqual(page.moisture_content_value.text(), "Not available")
+        self.assertEqual(page.moisture_content_value.text(), "NOT AVAILABLE")
         page.update_bean_data(
             {
                 "nir_classification": "SLATY",
@@ -1685,7 +1686,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         spectral_title = next(
             label
             for label in page.findChildren(QLabel)
-            if label.text() == "Spectral Response"
+            if label.text() == "SPECTRAL RESPONSE"
         )
         bean_id_box = page.findChild(
             QWidget,
@@ -1802,7 +1803,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         session.grant_admin()
         panel = AdminControlPanel(dashboard, session)
         page = panel.nir_page
-        self.assertEqual(page.quality_value.text(), "Waiting for scan")
+        self.assertEqual(page.quality_value.text(), "WAITING FOR SCAN")
         self.assertEqual(page.nir_confidence_value.text(), "")
         summary_labels = [
             label.text()
@@ -4003,6 +4004,13 @@ class HardwareCompatibilityTests(unittest.TestCase):
         dashboard = FakeDashboard()
         panel = AdminControlPanel(dashboard, session)
         self.assertIs(panel.dashboard, dashboard)
+        panel.resize(1200, 760)
+        panel._update_touch_layout()
+        self.assertEqual(panel.admin_sidebar.width(), 312)
+        self.assertEqual(
+            panel.admin_header.findChild(QLabel, "page_title").text(),
+            "PHENOCOATER CONTROL PANEL",
+        )
         self.assertFalse(hasattr(panel, "pricing_page"))
         self.assertEqual(
             panel.SECTION_NAMES[:3],

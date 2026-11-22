@@ -106,12 +106,9 @@ class CameraPage(QWidget):
         layout.setContentsMargins(14, 12, 14, 14)
         layout.setSpacing(8)
 
-        title_label = QLabel("Camera")
+        title_label = QLabel("CAMERA")
         title_label.setObjectName("page_title")
-        subtitle = QLabel("Live seed inspection and capture controls")
-        subtitle.setObjectName("settings_description")
         layout.addWidget(title_label)
-        layout.addWidget(subtitle)
 
         top_row = QHBoxLayout()
         top_row.setSpacing(8)
@@ -145,12 +142,12 @@ class CameraPage(QWidget):
         controls_layout.addWidget(exposure_column, 1)
         controls_layout.addWidget(image_column, 1)
 
-        lens_title = QLabel("Lens")
+        lens_title = QLabel("LENS")
         lens_title.setObjectName("camera_control_section_title")
         lens_layout.addWidget(lens_title)
         self.focus_auto_button, self.focus_manual_button = self._add_mode_buttons(
             lens_layout,
-            "Focus",
+            "FOCUS",
             auto_selected=(
                 self.camera_control_values[cv2.CAP_PROP_AUTOFOCUS]
                 == CAMERA_CONTROL_DEFAULTS[cv2.CAP_PROP_AUTOFOCUS]
@@ -159,7 +156,7 @@ class CameraPage(QWidget):
         )
         self._add_camera_slider(
             lens_layout,
-            "Focus",
+            "FOCUS",
             "camera_focus_slider",
             cv2.CAP_PROP_FOCUS,
             0,
@@ -167,9 +164,9 @@ class CameraPage(QWidget):
             round(self.camera_control_values[cv2.CAP_PROP_FOCUS]),
         )
         focus_range = QHBoxLayout()
-        far_label = QLabel("Far")
+        far_label = QLabel("FAR")
         far_label.setObjectName("camera_control_hint")
-        near_label = QLabel("Near")
+        near_label = QLabel("NEAR")
         near_label.setObjectName("camera_control_hint")
         near_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.focus_far_label = far_label
@@ -179,12 +176,12 @@ class CameraPage(QWidget):
         focus_range.addWidget(near_label)
         lens_layout.addLayout(focus_range)
 
-        capture_title = QLabel("Capture")
+        capture_title = QLabel("CAPTURE")
         capture_title.setObjectName("camera_control_section_title")
         lens_layout.addWidget(capture_title)
 
         resolution_row = QHBoxLayout()
-        resolution_row.addWidget(QLabel("Resolution"))
+        resolution_row.addWidget(QLabel("RESOLUTION"))
         self.resolution_selector = QComboBox()
         self.resolution_selector.setObjectName("camera_resolution_selector")
         self.resolution_selector.addItems(list(CAMERA_RESOLUTIONS))
@@ -226,13 +223,13 @@ class CameraPage(QWidget):
         )
         self.fps_selector.currentTextChanged.connect(self._set_camera_fps)
 
-        color_title = QLabel("Color")
+        color_title = QLabel("COLOR")
         color_title.setObjectName("camera_control_section_title")
         exposure_layout.addWidget(color_title)
         self.exposure_auto_button, self.exposure_manual_button = (
             self._add_mode_buttons(
                 exposure_layout,
-                "Exposure",
+                "EXPOSURE",
                 auto_selected=(
                     self.camera_control_values[cv2.CAP_PROP_AUTO_EXPOSURE]
                     == CAMERA_CONTROL_DEFAULTS[
@@ -244,7 +241,7 @@ class CameraPage(QWidget):
         )
         self._add_camera_slider(
             exposure_layout,
-            "Exposure",
+            "EXPOSURE",
             "camera_exposure_slider",
             cv2.CAP_PROP_EXPOSURE,
             -13,
@@ -254,7 +251,7 @@ class CameraPage(QWidget):
         )
         self._add_camera_slider(
             exposure_layout,
-            "Exposure gain",
+            "EXPOSURE GAIN",
             "camera_gain_slider",
             cv2.CAP_PROP_GAIN,
             0,
@@ -263,7 +260,7 @@ class CameraPage(QWidget):
         )
 
         flicker_row = QHBoxLayout()
-        flicker_label = QLabel("Anti-flicker")
+        flicker_label = QLabel("ANTI-FLICKER")
         self.flicker_selector = QComboBox()
         self.flicker_selector.setObjectName("camera_antiflicker_selector")
         self.flicker_selector.addItems(("50Hz", "60Hz"))
@@ -282,7 +279,7 @@ class CameraPage(QWidget):
         self.white_balance_auto_button, self.white_balance_manual_button = (
             self._add_mode_buttons(
                 image_layout,
-                "White balance",
+                "WHITE BALANCE",
                 auto_selected=(
                     self.camera_control_values[cv2.CAP_PROP_AUTO_WB]
                     == CAMERA_CONTROL_DEFAULTS[cv2.CAP_PROP_AUTO_WB]
@@ -292,7 +289,7 @@ class CameraPage(QWidget):
         )
         self._add_camera_slider(
             image_layout,
-            "Temperature",
+            "TEMPERATURE",
             "camera_white_balance_slider",
             cv2.CAP_PROP_WB_TEMPERATURE,
             2000,
@@ -302,16 +299,16 @@ class CameraPage(QWidget):
         )
         self.white_balance_slider.setEnabled(True)
 
-        image_title = QLabel("Image")
+        image_title = QLabel("IMAGE")
         image_title.setObjectName("camera_control_section_title")
         image_layout.addWidget(image_title)
 
         for label, object_name, property_id in (
-            ("Brightness", "camera_brightness_slider", cv2.CAP_PROP_BRIGHTNESS),
-            ("Contrast", "camera_contrast_slider", cv2.CAP_PROP_CONTRAST),
-            ("Color tone", "camera_hue_slider", cv2.CAP_PROP_HUE),
-            ("Saturation", "camera_saturation_slider", cv2.CAP_PROP_SATURATION),
-            ("Clarity", "camera_sharpness_slider", cv2.CAP_PROP_SHARPNESS),
+            ("BRIGHTNESS", "camera_brightness_slider", cv2.CAP_PROP_BRIGHTNESS),
+            ("CONTRAST", "camera_contrast_slider", cv2.CAP_PROP_CONTRAST),
+            ("COLOR TONE", "camera_hue_slider", cv2.CAP_PROP_HUE),
+            ("SATURATION", "camera_saturation_slider", cv2.CAP_PROP_SATURATION),
+            ("CLARITY", "camera_sharpness_slider", cv2.CAP_PROP_SHARPNESS),
         ):
             self._add_camera_slider(
                 image_layout,
@@ -324,13 +321,13 @@ class CameraPage(QWidget):
             )
 
         self.camera_controls_status = QLabel(
-            "Controls apply when the camera starts."
+            "CONTROLS APPLY WHEN THE CAMERA STARTS."
         )
         self.camera_controls_status.setObjectName("camera_controls_status")
         self.camera_controls_status.setWordWrap(True)
         image_layout.addWidget(self.camera_controls_status)
 
-        restore_button = QPushButton("Restore")
+        restore_button = QPushButton("RESTORE")
         restore_button.setObjectName("camera_restore_button")
         restore_button.setMinimumHeight(38)
         restore_button.clicked.connect(self.restore_camera_controls)
@@ -343,17 +340,17 @@ class CameraPage(QWidget):
         preview_layout.setContentsMargins(10, 10, 10, 10)
 
         preview_header = QHBoxLayout()
-        preview_title = QLabel("Live Camera Feed")
+        preview_title = QLabel("LIVE CAMERA FEED")
         preview_title.setProperty("class", "section_title")
         preview_header.addWidget(preview_title)
         preview_header.addStretch()
-        self.full_view_button = QPushButton("Full view")
+        self.full_view_button = QPushButton("FULL VIEW")
         self.full_view_button.setObjectName("camera_full_view_button")
         self.full_view_button.clicked.connect(self.open_full_view)
         preview_header.addWidget(self.full_view_button)
         preview_layout.addLayout(preview_header)
 
-        preview_box = QLabel("No camera connected")
+        preview_box = QLabel("NO CAMERA CONNECTED")
         preview_box.setObjectName("main_camera_frame")
         preview_box.setMinimumSize(180, 320)
         preview_box.setMaximumSize(360, 640)
@@ -382,14 +379,14 @@ class CameraPage(QWidget):
         status_layout.setContentsMargins(10, 10, 10, 10)
         status_layout.setSpacing(8)
 
-        status_title = QLabel("Camera Metrics")
+        status_title = QLabel("CAMERA METRICS")
         status_title.setProperty("class", "section_title")
         status_layout.addWidget(status_title)
 
         for label, value in [
-            ("Camera FPS", "0.0"),
-            ("Current bean ID", "0"),
-            ("Total beans detected", "0"),
+            ("CAMERA FPS", "0.0"),
+            ("CURRENT BEAN ID", "0"),
+            ("TOTAL BEANS DETECTED", "0"),
         ]:
             row = QHBoxLayout()
             name = QLabel(label)
@@ -442,10 +439,10 @@ class CameraPage(QWidget):
         row.addStretch()
         group = QButtonGroup(self)
         group.setExclusive(True)
-        manual_button = QPushButton("Manual")
+        manual_button = QPushButton("MANUAL")
         manual_button.setCheckable(True)
         manual_button.setObjectName(f"camera_{name.lower().replace(' ', '_')}_manual")
-        auto_button = QPushButton("Auto")
+        auto_button = QPushButton("AUTO")
         auto_button.setCheckable(True)
         auto_button.setObjectName(f"camera_{name.lower().replace(' ', '_')}_auto")
         group.addButton(manual_button)
@@ -628,7 +625,7 @@ class CameraPage(QWidget):
         )
 
     def _set_camera_controls_status(self, status):
-        self.camera_controls_status.setText(status)
+        self.camera_controls_status.setText(status.upper())
 
     def open_full_view(self):
         if self.full_view_dialog is not None:
@@ -655,7 +652,7 @@ class CameraPage(QWidget):
 
         dialog = QDialog(self)
         dialog.setObjectName("camera_full_view_dialog")
-        dialog.setWindowTitle("Live Camera Feed")
+        dialog.setWindowTitle("LIVE CAMERA FEED")
         dialog.setStyleSheet(
             "QDialog#camera_full_view_dialog { background-color: #101512; }"
         )
@@ -666,7 +663,7 @@ class CameraPage(QWidget):
         toolbar = QHBoxLayout()
         title = QLabel("LIVE CAMERA")
         title.setStyleSheet("color: white; font-weight: 700; font-size: 22px;")
-        close_button = QPushButton("Exit full view")
+        close_button = QPushButton("EXIT FULL VIEW")
         close_button.setObjectName("camera_full_view_close_button")
         close_button.clicked.connect(dialog.reject)
         toolbar.addWidget(title)
@@ -674,7 +671,7 @@ class CameraPage(QWidget):
         toolbar.addWidget(close_button)
         dialog_layout.addLayout(toolbar)
 
-        full_view_box = QLabel("Waiting for camera feed...")
+        full_view_box = QLabel("WAITING FOR CAMERA FEED...")
         full_view_box.setObjectName("camera_full_view_frame")
         full_view_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
         full_view_box.setSizePolicy(
@@ -778,8 +775,8 @@ class CameraPage(QWidget):
                 warning = QMessageBox(self)
                 warning.setObjectName("camera_unavailable_dialog")
                 warning.setIcon(QMessageBox.Icon.Warning)
-                warning.setWindowTitle("Camera Unavailable")
-                warning.setText(message)
+                warning.setWindowTitle("CAMERA UNAVAILABLE")
+                warning.setText(message.upper())
                 warning.setStandardButtons(QMessageBox.StandardButton.Ok)
                 ok_button = warning.button(QMessageBox.StandardButton.Ok)
                 ok_button.setObjectName("camera_unavailable_ok_button")
@@ -801,7 +798,7 @@ class CameraPage(QWidget):
             if not self.camera_capture.isOpened():
                 self.camera_capture.release()
                 self.camera_capture = None
-                self.preview_box.setText("No camera connected")
+                self.preview_box.setText("NO CAMERA CONNECTED")
                 return
             stream_errors = apply_camera_stream_settings(
                 self.camera_capture,
@@ -844,7 +841,7 @@ class CameraPage(QWidget):
         self.current_bean_id = 0
         self.update_camera_metrics()
         self.preview_box.clear()
-        self.preview_box.setText("No camera connected")
+        self.preview_box.setText("NO CAMERA CONNECTED")
         self.set_final_result("NO DETECTION")
 
     def closeEvent(self, event):

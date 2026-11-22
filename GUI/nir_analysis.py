@@ -31,18 +31,15 @@ class NIRAnalysisPage(QWidget):
         layout.setContentsMargins(14, 12, 14, 14)
         layout.setSpacing(8)
 
-        title_label = QLabel("NIR Analysis")
+        title_label = QLabel("NIR ANALYSIS")
         title_label.setObjectName("page_title")
-        subtitle = QLabel("Spectral scan and bean classification")
-        subtitle.setObjectName("settings_description")
         layout.addWidget(title_label)
-        layout.addWidget(subtitle)
 
         output_panel = QWidget()
         output_panel.setObjectName("settings_panel")
         output_layout = QVBoxLayout(output_panel)
         output_layout.setContentsMargins(10, 10, 10, 10)
-        output_title = QLabel("AS7265X Serial Monitor")
+        output_title = QLabel("AS7265X SERIAL MONITOR")
         output_title.setProperty("class", "section_title")
         output_layout.addWidget(output_title)
         self.serial_output = QPlainTextEdit()
@@ -51,7 +48,7 @@ class NIRAnalysisPage(QWidget):
         self.serial_output.setMinimumHeight(180)
         self.serial_output.setMaximumBlockCount(500)
         self.serial_output.setPlainText(
-            "Waiting for AS7265X serial data..."
+            "WAITING FOR AS7265X SERIAL DATA..."
         )
         layout.addWidget(output_panel)
 
@@ -62,11 +59,11 @@ class NIRAnalysisPage(QWidget):
         chart_layout = QVBoxLayout(chart_panel)
         chart_layout.setContentsMargins(10, 10, 10, 10)
         chart_header_row = QHBoxLayout()
-        chart_label = QLabel("Spectral Response")
+        chart_label = QLabel("SPECTRAL RESPONSE")
         chart_label.setProperty("class", "section_title")
         chart_header_row.addWidget(chart_label)
         chart_header_row.addStretch()
-        chart_header_row.addWidget(QLabel("Bean ID"))
+        chart_header_row.addWidget(QLabel("BEAN ID"))
         self.spectrum_bean_id_value = QLabel("--")
         self.spectrum_bean_id_value.setObjectName("nir_spectrum_bean_id")
         self.spectrum_bean_id_value.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -96,17 +93,17 @@ class NIRAnalysisPage(QWidget):
         summary = QVBoxLayout(summary_panel)
         summary.setContentsMargins(10, 10, 10, 10)
         summary.setSpacing(8)
-        summary_title = QLabel("Current Reading")
+        summary_title = QLabel("CURRENT READING")
         summary_title.setProperty("class", "section_title")
         summary.addWidget(summary_title)
         summary_values = {
-            "Moisture Content": QLabel("Not available"),
-            "Quality": QLabel("Waiting for scan"),
-            "Confidence": QLabel(""),
+            "MOISTURE CONTENT": QLabel("NOT AVAILABLE"),
+            "QUALITY": QLabel("WAITING FOR SCAN"),
+            "CONFIDENCE": QLabel(""),
         }
-        self.moisture_content_value = summary_values["Moisture Content"]
-        self.quality_value = summary_values["Quality"]
-        self.nir_confidence_value = summary_values["Confidence"]
+        self.moisture_content_value = summary_values["MOISTURE CONTENT"]
+        self.quality_value = summary_values["QUALITY"]
+        self.nir_confidence_value = summary_values["CONFIDENCE"]
         for label, val in summary_values.items():
             reading_card = QFrame()
             reading_card.setObjectName("nir_reading_card")
@@ -128,7 +125,7 @@ class NIRAnalysisPage(QWidget):
         table.setObjectName("nir_table")
         table.setAccessibleName("Live AS7265X readings")
         table.setColumnCount(len(WAVELENGTHS))
-        table.setHorizontalHeaderLabels([f"{wavelength}nm" for wavelength in WAVELENGTHS])
+        table.setHorizontalHeaderLabels([f"{wavelength}NM" for wavelength in WAVELENGTHS])
         table.setRowCount(0)
         table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         table.setMinimumHeight(360)
@@ -150,11 +147,11 @@ class NIRAnalysisPage(QWidget):
     ) -> None:
         normalized_label = label.strip().upper()
         if normalized_label == "UNAVAILABLE":
-            self.quality_value.setText("Unavailable")
+            self.quality_value.setText("UNAVAILABLE")
             self.nir_confidence_value.setText("")
             return
         self.quality_value.setText(
-            normalized_label or "Waiting for scan"
+            normalized_label or "WAITING FOR SCAN"
         )
         self.nir_confidence_value.setText(
             "" if confidence is None else f"{confidence:.1f}%"
@@ -165,7 +162,7 @@ class NIRAnalysisPage(QWidget):
 
     def set_moisture_content(self, value: str | float | None) -> None:
         if value is None:
-            self.moisture_content_value.setText("Not available")
+            self.moisture_content_value.setText("NOT AVAILABLE")
         elif isinstance(value, (int, float)):
             self.moisture_content_value.setText(f"{float(value):.2f}%")
         else:

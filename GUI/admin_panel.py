@@ -49,15 +49,15 @@ class AdminPasswordResetDialog(QDialog):
         self.setMinimumWidth(340)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"Enter a new password for {username}."))
+        layout.addWidget(QLabel(f"ENTER A NEW PASSWORD FOR {username}."))
 
         self.password_input = QLineEdit()
         self.password_input.setObjectName("reset_admin_password")
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_input.setPlaceholderText("New password")
+        self.password_input.setPlaceholderText("NEW PASSWORD")
         layout.addWidget(self.password_input)
 
-        self.show_password_checkbox = ShowPasswordCheckBox("Show password")
+        self.show_password_checkbox = ShowPasswordCheckBox("SHOW PASSWORD")
         self.show_password_checkbox.setObjectName(
             "reset_admin_show_password_checkbox"
         )
@@ -76,7 +76,7 @@ class AdminPasswordResetDialog(QDialog):
             | QDialogButtonBox.StandardButton.Cancel
         )
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
-            "Save password"
+            "SAVE PASSWORD"
         )
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setObjectName(
             "admin_password_reset_save_button"
@@ -84,6 +84,9 @@ class AdminPasswordResetDialog(QDialog):
         self.buttons.button(
             QDialogButtonBox.StandardButton.Cancel
         ).setObjectName("admin_password_reset_cancel_button")
+        self.buttons.button(
+            QDialogButtonBox.StandardButton.Cancel
+        ).setText("CANCEL")
         self.buttons.accepted.connect(self._accept_if_valid)
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)
@@ -118,15 +121,9 @@ class SystemOverviewPage(QWidget):
         layout.setContentsMargins(14, 12, 14, 14)
         layout.setSpacing(8)
 
-        title = QLabel("System Overview")
+        title = QLabel("SYSTEM OVERVIEW")
         title.setObjectName("page_title")
-        description = QLabel(
-            "Live status for the Arduino Mega controller and connected system components."
-        )
-        description.setObjectName("settings_description")
-        description.setWordWrap(True)
         layout.addWidget(title)
-        layout.addWidget(description)
 
         status_container = QFrame()
         status_container.setProperty("class", "card")
@@ -135,7 +132,7 @@ class SystemOverviewPage(QWidget):
         status_layout.setContentsMargins(12, 12, 12, 12)
         status_layout.setSpacing(8)
 
-        status_title = QLabel("System Status")
+        status_title = QLabel("SYSTEM STATUS")
         status_title.setProperty("class", "section_title")
         status_title.setObjectName("section_title")
         status_layout.addWidget(status_title)
@@ -150,7 +147,7 @@ class SystemOverviewPage(QWidget):
             "Camera AI Model",
         ):
             row = QHBoxLayout()
-            label = QLabel(name)
+            label = QLabel(name.upper())
             label.setObjectName("dashboard_status_name")
             value = QLabel("Unknown")
             value.setObjectName("dashboard_status_value")
@@ -217,14 +214,9 @@ class ProcessMonitorPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 14)
         layout.setSpacing(8)
-        title = QLabel("Debug Logs")
+        title = QLabel("DEBUG LOGS")
         title.setObjectName("page_title")
-        description = QLabel(
-            "Runtime hardware status and messages received from the connected controller."
-        )
-        description.setObjectName("settings_description")
         layout.addWidget(title)
-        layout.addWidget(description)
         self.log_output = QPlainTextEdit()
         self.log_output.setObjectName("admin_log_output")
         self.log_output.setReadOnly(True)
@@ -253,29 +245,24 @@ class AdminAccountCreationPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 14)
         layout.setSpacing(8)
-        title = QLabel("Create Admin")
+        title = QLabel("CREATE ADMIN")
         title.setObjectName("page_title")
-        description = QLabel(
-            "Create an administrator account using a username and password."
-        )
-        description.setObjectName("settings_description")
         layout.addWidget(title)
-        layout.addWidget(description)
 
         form = QFormLayout()
         self.username_input = QLineEdit()
         self.username_input.setObjectName("new_admin_username")
-        self.username_input.setPlaceholderText("Username")
-        form.addRow("Username", self.username_input)
+        self.username_input.setPlaceholderText("USERNAME")
+        form.addRow("USERNAME", self.username_input)
 
         self.password_input = QLineEdit()
         self.password_input.setObjectName("new_admin_password")
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_input.setPlaceholderText("Password")
-        form.addRow("Password", self.password_input)
+        self.password_input.setPlaceholderText("PASSWORD")
+        form.addRow("PASSWORD", self.password_input)
         layout.addLayout(form)
 
-        self.show_password_checkbox = ShowPasswordCheckBox("Show password")
+        self.show_password_checkbox = ShowPasswordCheckBox("SHOW PASSWORD")
         self.show_password_checkbox.setObjectName(
             "create_admin_show_password_checkbox"
         )
@@ -284,7 +271,7 @@ class AdminAccountCreationPage(QWidget):
         )
         layout.addWidget(self.show_password_checkbox)
 
-        self.create_button = QPushButton("Create Admin")
+        self.create_button = QPushButton("CREATE ADMIN")
         self.create_button.setObjectName("create_admin_button")
         self.create_button.clicked.connect(self.create_admin_account)
         layout.addWidget(self.create_button)
@@ -294,7 +281,7 @@ class AdminAccountCreationPage(QWidget):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        accounts_title = QLabel("Registered Administrators")
+        accounts_title = QLabel("REGISTERED ADMINISTRATORS")
         accounts_title.setObjectName("admin_accounts_heading")
         layout.addWidget(accounts_title)
         self.account_cards_layout = QVBoxLayout()
@@ -357,7 +344,7 @@ class AdminAccountCreationPage(QWidget):
             return
 
         if not accounts:
-            empty_label = QLabel("No administrator accounts found.")
+            empty_label = QLabel("NO ADMINISTRATOR ACCOUNTS FOUND.")
             empty_label.setObjectName("admin_accounts_empty")
             self.account_cards_layout.addWidget(empty_label)
             return
@@ -379,9 +366,9 @@ class AdminAccountCreationPage(QWidget):
         account_label = QLabel(username)
         account_label.setObjectName("admin_account_username")
         role_label = QLabel(
-            "Super Admin · Protected"
+            "SUPER ADMIN · PROTECTED"
             if is_super_admin
-            else f"Admin · {'Active' if is_active else 'Disabled'}"
+            else f"ADMIN · {'ACTIVE' if is_active else 'DISABLED'}"
         )
         role_label.setObjectName("admin_account_role")
         details.addWidget(account_label)
@@ -576,7 +563,7 @@ class AdminControlPanel(QMainWindow):
 
         sidebar = QWidget()
         sidebar.setObjectName("admin_sidebar")
-        sidebar.setFixedWidth(340)
+        sidebar.setFixedWidth(312)
         self.admin_sidebar = sidebar
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(14, 14, 14, 12)
@@ -668,7 +655,7 @@ class AdminControlPanel(QMainWindow):
             self.admin_scroll_areas.append(scroll)
 
         sidebar_layout.addStretch()
-        logout_button = QPushButton("Log out")
+        logout_button = QPushButton("LOG OUT")
         logout_button.setObjectName("admin_logout_button")
         logout_button.clicked.connect(self.logout_requested.emit)
         sidebar_layout.addWidget(logout_button)
@@ -683,7 +670,7 @@ class AdminControlPanel(QMainWindow):
         self.admin_header = header
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(12, 6, 12, 6)
-        title = QLabel("PhenoCoater Administrator")
+        title = QLabel("PHENOCOATER CONTROL PANEL")
         title.setObjectName("page_title")
         header_layout.addWidget(title)
         header_layout.addStretch()
@@ -706,7 +693,7 @@ class AdminControlPanel(QMainWindow):
         compact = self.width() < 1000
         narrow = self.width() < 720
         self.admin_sidebar.setFixedWidth(
-            128 if narrow else 176 if compact else 260
+            128 if narrow else 176 if compact else 312
         )
         self.admin_sidebar.setProperty("compact", compact)
         self.admin_sidebar.style().unpolish(self.admin_sidebar)
