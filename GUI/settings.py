@@ -139,6 +139,7 @@ class SettingsPage(QWidget):
         title_column = QVBoxLayout()
         title_label = QLabel("SYSTEM SETTINGS")
         title_label.setObjectName("page_title")
+        title_label.setStyleSheet("font-size: 35px; font-weight: bold;")
         title_column.addWidget(title_label)
         header.addLayout(title_column)
         header.addStretch()

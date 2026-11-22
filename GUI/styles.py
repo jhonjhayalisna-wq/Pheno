@@ -1672,7 +1672,11 @@ _app_style += """
 #settings_page QLabel#page_title,
 #admin_history_page QLabel#page_title,
 #admin_account_creation_page QLabel#page_title {
-    font-size: 28px;
+    font-size: 35px;
+}
+
+#admin_pages QLabel#page_title {
+    font-size: 35px;
 }
 
 #admin_history_page {

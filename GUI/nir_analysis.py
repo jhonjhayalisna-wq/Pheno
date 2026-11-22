@@ -33,6 +33,7 @@ class NIRAnalysisPage(QWidget):
 
         title_label = QLabel("NIR ANALYSIS")
         title_label.setObjectName("page_title")
+        title_label.setStyleSheet("font-size: 35px; font-weight: bold;")
         layout.addWidget(title_label)
 
         output_panel = QWidget()

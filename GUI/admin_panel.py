@@ -123,6 +123,7 @@ class SystemOverviewPage(QWidget):
 
         title = QLabel("SYSTEM OVERVIEW")
         title.setObjectName("page_title")
+        title.setStyleSheet("font-size: 35px; font-weight: bold;")
         layout.addWidget(title)
 
         status_container = QFrame()
@@ -216,6 +217,7 @@ class ProcessMonitorPage(QWidget):
         layout.setSpacing(8)
         title = QLabel("DEBUG LOGS")
         title.setObjectName("page_title")
+        title.setStyleSheet("font-size: 35px; font-weight: bold;")
         layout.addWidget(title)
         self.log_output = QPlainTextEdit()
         self.log_output.setObjectName("admin_log_output")
@@ -247,6 +249,7 @@ class AdminAccountCreationPage(QWidget):
         layout.setSpacing(8)
         title = QLabel("CREATE ADMIN")
         title.setObjectName("page_title")
+        title.setStyleSheet("font-size: 35px; font-weight: bold;")
         layout.addWidget(title)
 
         form = QFormLayout()

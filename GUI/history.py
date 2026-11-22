@@ -102,6 +102,7 @@ class HistoryPage(QWidget):
 
         title = QLabel("HISTORY")
         title.setObjectName("page_title")
+        title.setStyleSheet("font-size: 35px; font-weight: bold;")
         root_layout.addWidget(title)
 
         self.views = QStackedWidget()

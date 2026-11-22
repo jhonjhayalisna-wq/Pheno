@@ -108,6 +108,7 @@ class CameraPage(QWidget):
 
         title_label = QLabel("CAMERA")
         title_label.setObjectName("page_title")
+        title_label.setStyleSheet("font-size: 35px; font-weight: bold;")
         layout.addWidget(title_label)
 
         top_row = QHBoxLayout()

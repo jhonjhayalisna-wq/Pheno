@@ -27,6 +27,7 @@ class ResultsPage(QWidget):
 
         title_label = QLabel("WEIGHT SETTINGS")
         title_label.setObjectName("page_title")
+        title_label.setStyleSheet("font-size: 35px; font-weight: bold;")
         layout.addWidget(title_label)
 
         monitor_panel = QFrame()
