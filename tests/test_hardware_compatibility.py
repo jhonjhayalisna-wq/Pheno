@@ -1848,7 +1848,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 for index in range(page.spectrum_series.count())
             ],
             [
-                (float(index), value)
+                (float(index + 1), value)
                 for index, value in enumerate(expected_values)
             ],
         )
@@ -1859,12 +1859,20 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.wavelength_axis.min(), 0)
         self.assertEqual(
             page.wavelength_axis.max(),
-            len(WAVELENGTHS) - 1,
+            len(WAVELENGTHS),
+        )
+        self.assertEqual(
+            [
+                page.wavelength_axis.categoriesLabels().index(str(wavelength))
+                for wavelength in WAVELENGTHS
+            ],
+            list(range(len(WAVELENGTHS))),
         )
         self.assertEqual(
             page.wavelength_axis.labelsPosition(),
             page.wavelength_axis.AxisLabelsPosition.AxisLabelsPositionOnValue,
         )
+        self.assertEqual(page.wavelength_axis.labelsFont().pixelSize(), 20)
         self.assertEqual(page.intensity_axis.min(), 0)
         self.assertEqual(page.intensity_axis.max(), 250)
         self.assertEqual(page.intensity_axis.tickCount(), 6)
@@ -1961,7 +1969,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 for index in range(page.spectrum_series.count())
             ],
             [
-                (float(index), value)
+                (float(index + 1), value)
                 for index, value in enumerate(values)
             ],
         )
@@ -3084,7 +3092,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 )
             ],
             [
-                (float(index), value)
+                (float(index + 1), value)
                 for index, value in enumerate(spectrum_values)
             ],
         )
@@ -3179,7 +3187,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
             wavelength_axis.categoriesLabels(),
             [str(wavelength) for wavelength in WAVELENGTHS],
         )
-        self.assertFalse(wavelength_axis.labelsTruncated())
+        self.assertEqual(wavelength_axis.min(), 0)
+        self.assertEqual(wavelength_axis.max(), len(WAVELENGTHS))
+        self.assertEqual(wavelength_axis.labelsFont().pixelSize(), 20)
         self.assertEqual(
             spectrum_series.count(),
             len(WAVELENGTHS),
@@ -3190,7 +3200,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 for index in range(spectrum_series.count())
             ],
             [
-                (float(index), value)
+                (float(index + 1), value)
                 for index, value in enumerate(spectrum_values)
             ],
         )

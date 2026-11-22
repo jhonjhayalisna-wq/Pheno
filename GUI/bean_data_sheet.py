@@ -318,7 +318,7 @@ class BeanDataSheetPage(QWidget):
         spectrum_layout.addWidget(self.spectrum_chart, 1)
 
         self.sensor_content_layout.addWidget(camera_panel, 1)
-        self.sensor_content_layout.addWidget(spectrum_panel, 2)
+        self.sensor_content_layout.addWidget(spectrum_panel, 3)
         self.summary_stack.addWidget(sensor_view)
         layout.addWidget(self.summary_stack)
 

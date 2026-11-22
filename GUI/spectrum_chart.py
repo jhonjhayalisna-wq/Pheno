@@ -17,9 +17,10 @@ from .styles import TYPOGRAPHY_SCALE
 
 # Equal-width slots keep all sensor channels evenly spaced on the plot.
 _CHANNEL_POSITIONS = {
-    wavelength: index
+    wavelength: index + 1
     for index, wavelength in enumerate(WAVELENGTHS)
 }
+_AXIS_MAX = len(WAVELENGTHS)
 
 
 class SpectrumResponseChart(QChartView):
@@ -40,18 +41,17 @@ class SpectrumResponseChart(QChartView):
 
         wavelength_axis = QCategoryAxis()
         wavelength_axis.setTitleText("Wavelength (nm)")
-        wavelength_axis.setStartValue(-1)
         wavelength_axis.setLabelsPosition(
             QCategoryAxis.AxisLabelsPosition.AxisLabelsPositionOnValue
         )
         for index, wavelength in enumerate(WAVELENGTHS):
-            wavelength_axis.append(str(wavelength), index)
-        wavelength_axis.setRange(0, len(WAVELENGTHS) - 1)
+            wavelength_axis.append(str(wavelength), index + 1)
+        wavelength_axis.setRange(0, _AXIS_MAX)
 
         channel_font = QFont()
         channel_font.setPixelSize(round(TYPOGRAPHY_SCALE["body"] * 1.5))
         wavelength_label_font = QFont()
-        wavelength_label_font.setPixelSize(TYPOGRAPHY_SCALE["caption"])
+        wavelength_label_font.setPixelSize(20)
         wavelength_axis.setLabelsFont(wavelength_label_font)
         wavelength_axis.setLabelsAngle(-90)
         wavelength_axis.setTitleFont(channel_font)
