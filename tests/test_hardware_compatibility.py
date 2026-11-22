@@ -3495,12 +3495,12 @@ class HardwareCompatibilityTests(unittest.TestCase):
             }
         )
         self.assertEqual(page.batch_number_value.text(), "0001")
-        self.assertEqual(page.total_weight_value.text(), "1.00 g")
-        self.assertEqual(page.current_bean_count, 1)
-        self.assertEqual(page.data_table.rowCount(), 1)
-        self.assertEqual(page.data_table.item(0, 0).text(), "202610260002")
-        self.assertEqual(page.data_table.item(0, 1).text(), "MOLDY")
-        self.assertEqual(page.data_table.item(0, 2).text(), "55.0%")
+        self.assertEqual(page.total_weight_value.text(), "101.00 g")
+        self.assertEqual(page.current_bean_count, 2)
+        self.assertEqual(page.data_table.rowCount(), 2)
+        self.assertEqual(page.data_table.item(1, 0).text(), "202610260002")
+        self.assertEqual(page.data_table.item(1, 1).text(), "MOLDY")
+        self.assertEqual(page.data_table.item(1, 2).text(), "55.0%")
         self.assertEqual(page.pns_grade_value.text(), "A")
 
         page.update_dashboard_metrics(
@@ -3514,10 +3514,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
             }
         )
         self.assertEqual(page.batch_number_value.text(), "0001")
-        self.assertEqual(page.total_weight_value.text(), "100.00 g")
-        self.assertEqual(page.data_table.rowCount(), 1)
-        self.assertEqual(page.data_table.item(0, 1).text(), "INSECT-DAMAGED")
-        self.assertEqual(page.data_table.item(0, 2).text(), "73.0%")
+        self.assertEqual(page.total_weight_value.text(), "200.00 g")
+        self.assertEqual(page.data_table.rowCount(), 2)
+        self.assertEqual(page.data_table.item(1, 1).text(), "INSECT-DAMAGED")
+        self.assertEqual(page.data_table.item(1, 2).text(), "73.0%")
 
         page.update_dashboard_metrics(
             {
@@ -3529,12 +3529,12 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "confidence": 0.91,
             }
         )
-        self.assertEqual(page.batch_number_value.text(), "0002")
-        self.assertEqual(page.total_weight_value.text(), "1.00 g")
-        self.assertEqual(page.current_bean_count, 1)
-        self.assertEqual(page.data_table.rowCount(), 1)
-        self.assertEqual(page.data_table.item(0, 0).text(), "202610260003")
-        self.assertEqual(history_rows[-1][0], "0002")
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "201.00 g")
+        self.assertEqual(page.current_bean_count, 3)
+        self.assertEqual(page.data_table.rowCount(), 3)
+        self.assertEqual(page.data_table.item(2, 0).text(), "202610260003")
+        self.assertEqual(history_rows[-1][0], "0001")
 
         page.update_dashboard_metrics(
             {
@@ -3545,11 +3545,11 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "confidence": 0.91,
             }
         )
-        self.assertEqual(page.batch_number_value.text(), "0004")
-        self.assertEqual(page.total_weight_value.text(), "100.00 g")
-        self.assertEqual(page.current_bean_count, 1)
-        self.assertEqual(page.data_table.item(0, 0).text(), "202610260004")
-        self.assertEqual(history_rows[-1][0], "0004")
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "500.00 g")
+        self.assertEqual(page.current_bean_count, 4)
+        self.assertEqual(page.data_table.item(3, 0).text(), "202610260004")
+        self.assertEqual(history_rows[-1][0], "0001")
 
         page.update_dashboard_metrics(
             {
@@ -3560,9 +3560,9 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "quality": "UNDEFINED",
             }
         )
-        self.assertEqual(page.batch_number_value.text(), "0004")
-        self.assertEqual(page.total_weight_value.text(), "100.00 g")
-        self.assertEqual(page.data_table.rowCount(), 1)
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "500.00 g")
+        self.assertEqual(page.data_table.rowCount(), 4)
 
         page.show_table("Moisture Content Sample")
         self.assertEqual(page.data_table.rowCount(), 0)
@@ -3570,7 +3570,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
 
     def test_load_cell_weight_above_100g_does_not_stop_system(self):
         dashboard = Dashboard()
-        self.assertEqual(dashboard.batch_status_value.text(), "")
         page = BeanDataSheetPage()
         dashboard.bean_data_updated.connect(page.update_dashboard_metrics)
         dashboard.arduino_port = "COM-test"
@@ -3625,16 +3624,29 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertTrue(dashboard.stop_system_button.isEnabled())
         self.assertEqual(camera_stops, [])
         self.assertNotIn("STOP_SAMPLE\n", commands)
-        self.assertIn("Processing", dashboard.batch_status_value.text())
 
         send_serial_lines(
             b"BEAN_COUNT: 3\n"
-            b"Load Cell 1: 200.00 g\n"
+            b"Load Cell 1: 101.00 g\n"
         )
-        self.assertEqual(page.total_weight_value.text(), "200.00 g")
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "101.00 g")
+        self.assertEqual(dashboard.batch_weight_value.text(), "101.00")
+        self.assertEqual(dashboard.completed_batches, [])
         self.assertEqual(page.current_bean_count, 3)
         self.assertTrue(dashboard.system_running)
         self.assertTrue(dashboard.ir_batch_active)
+        self.assertNotIn("STOP_SAMPLE\n", commands)
+
+        send_serial_lines(
+            b"BEAN_COUNT: 4\n"
+            b"Load Cell 1: 201.00 g\n"
+        )
+        self.assertEqual(page.batch_number_value.text(), "0001")
+        self.assertEqual(page.total_weight_value.text(), "201.00 g")
+        self.assertEqual(dashboard.batch_weight_value.text(), "201.00")
+        self.assertEqual(dashboard.completed_batches, [])
+        self.assertTrue(dashboard.system_running)
         self.assertNotIn("STOP_SAMPLE\n", commands)
 
         dashboard.stop_system()
@@ -3642,6 +3654,23 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertFalse(dashboard.ir_batch_active)
         self.assertEqual(camera_stops, [True])
         self.assertIn("STOP_SAMPLE\n", commands)
+        self.assertEqual(
+            [batch["weight"] for batch in dashboard.completed_batches],
+            [201.0],
+        )
+
+        send_serial_lines(
+            b"BEAN_COUNT: 5\n"
+            b"Load Cell 1: 250.00 g\n"
+        )
+        self.assertEqual(raw_weight_readings[-1], 250.0)
+        self.assertEqual(dashboard.good_weight_grams, 250.0)
+        self.assertEqual(dashboard.current_batch_weight_grams, 201.0)
+        self.assertEqual(page.total_weight_value.text(), "201.00 g")
+        self.assertEqual(
+            [batch["weight"] for batch in dashboard.completed_batches],
+            [201.0],
+        )
 
         page.deleteLater()
         dashboard.close()
@@ -3819,6 +3848,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             {
                 "bean_id": "previous-batch",
                 "bean_count": 1,
+                "batch_number": 1,
                 "cumulative_weight_grams": 100.0,
                 "quality": "MOLDY",
                 "moisture": 8.0,
@@ -3828,6 +3858,8 @@ class HardwareCompatibilityTests(unittest.TestCase):
             {
                 "bean_id": "batch-reset",
                 "bean_count": 0,
+                "batch_number": 2,
+                "batch_weight_grams": 0.0,
                 "quality": "UNDEFINED",
             }
         )
@@ -3835,6 +3867,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             {
                 "bean_id": "current-good",
                 "bean_count": 1,
+                "batch_number": 2,
                 "cumulative_weight_grams": 101.0,
                 "quality": "GOOD",
                 "moisture": 6.0,
@@ -3844,6 +3877,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
             {
                 "bean_id": "current-moldy",
                 "bean_count": 2,
+                "batch_number": 2,
                 "cumulative_weight_grams": 102.0,
                 "quality": "MOLDY",
                 "moisture": 8.0,

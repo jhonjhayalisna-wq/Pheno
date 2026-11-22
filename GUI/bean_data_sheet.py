@@ -89,7 +89,6 @@ class _QualityFilterMenu(QMenu):
 class BeanDataSheetPage(QWidget):
     batch_history_updated = Signal(object)
     grading_data_updated = Signal(object, object, object)
-    BATCH_SIZE_GRAMS = 100.0
 
     TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
         "All Bean": (
@@ -1124,10 +1123,13 @@ class BeanDataSheetPage(QWidget):
                     metrics.get("batch_weight_grams")
                 )
             if cumulative_weight is not None:
-                self.batch_number, batch_weight = self._batch_for_weight(
-                    cumulative_weight
-                )
-                record_metrics["batch_weight_grams"] = batch_weight
+                record_metrics["batch_weight_grams"] = cumulative_weight
+        if record_metrics.get("batch_weight_grams") is None:
+            cumulative_weight = _to_float(
+                metrics.get("cumulative_weight_grams")
+            )
+            if cumulative_weight is not None:
+                record_metrics["batch_weight_grams"] = cumulative_weight
         record_metrics.pop("cumulative_weight_grams", None)
 
         if bean_id and bean_count > 0:
@@ -1199,6 +1201,10 @@ class BeanDataSheetPage(QWidget):
             if weights
             else _to_float(self.batch_snapshot.get("batch_weight_grams"))
         )
+        if batch_weight is None:
+            batch_weight = _to_float(
+                self.batch_snapshot.get("cumulative_weight_grams")
+            )
         self.total_weight_value.setText(
             (
                 f"{batch_weight:,.2f} g"
@@ -1436,19 +1442,6 @@ class BeanDataSheetPage(QWidget):
                 ),
             ))
         return rows
-
-    @classmethod
-    def _batch_for_weight(cls, cumulative_weight: float) -> tuple[int, float]:
-        cumulative_weight = max(0.0, cumulative_weight)
-        batch_number = max(
-            1,
-            math.ceil(cumulative_weight / cls.BATCH_SIZE_GRAMS),
-        )
-        batch_weight = (
-            cumulative_weight
-            - (batch_number - 1) * cls.BATCH_SIZE_GRAMS
-        )
-        return batch_number, batch_weight
 
     def _pns_sample_rows(self) -> list[tuple[Any, ...]]:
         """One row per batch, using the whole batch's defect counts."""

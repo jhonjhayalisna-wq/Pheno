@@ -4,7 +4,7 @@ from collections.abc import Iterable, Mapping, Sequence
 import re
 import time
 from datetime import date, datetime, timedelta
-from math import ceil, isfinite
+from math import isfinite
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING, Any, cast
@@ -222,7 +222,6 @@ class Dashboard(QWidget):
     bean_data_updated = Signal(object)
     EMEET_CAMERA_INDEX = 0
     GRAMS_PER_KILOGRAM = 1000.0
-    BATCH_SIZE_GRAMS = 100.0
     ARDUINO_PROTOCOL_TIMEOUT_SECONDS = 5.0
     IR_SAMPLE_START_RETRY_SECONDS = 1.0
 
@@ -836,6 +835,8 @@ class Dashboard(QWidget):
         )
 
     def _update_batch_weight(self, cumulative_weight_grams: float) -> None:
+        if not self.system_running:
+            return
         if self.batch_weight_baseline_grams is None:
             self.batch_weight_baseline_grams = 0.0
         elif cumulative_weight_grams < self.batch_weight_baseline_grams:
@@ -845,15 +846,7 @@ class Dashboard(QWidget):
             0.0,
             cumulative_weight_grams - self.batch_weight_baseline_grams,
         )
-        self.current_batch_number = max(
-            1,
-            ceil(batch_offset_grams / self.BATCH_SIZE_GRAMS),
-        )
-        self.current_batch_weight_grams = max(
-            0.0,
-            batch_offset_grams
-            - (self.current_batch_number - 1) * self.BATCH_SIZE_GRAMS,
-        )
+        self.current_batch_weight_grams = batch_offset_grams
 
     def initialize_nir_scanner(self) -> None:
         if (

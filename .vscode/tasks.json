@@ -60,6 +60,21 @@
 			],
 			"isBackground": false,
 			"group": "test"
+		},
+		{
+			"label": "Temporary Focused Batch Tests",
+			"type": "shell",
+			"command": "C:\\Users\\JHON JHAY\\Downloads\\PHENO-COATER-main\\PHENO\\.venv313\\Scripts\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"-q",
+				"tests/test_hardware_compatibility.py",
+				"-k",
+				"bean_data_tables_update_from_dashboard_metrics or load_cell_weight_above_100g_does_not_stop_system"
+			],
+			"isBackground": false,
+			"problemMatcher": []
 		}
 	]
 }
