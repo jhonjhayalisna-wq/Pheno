@@ -408,9 +408,9 @@ class CameraPage(QWidget):
             row.addStretch()
             row.addWidget(val)
             status_layout.addLayout(row)
-            if label == "Camera FPS":
+            if label == "CAMERA FPS":
                 self.fps_label = val
-            elif label == "Current bean ID":
+            elif label == "CURRENT BEAN ID":
                 self.bean_id_label = val
             else:
                 self.bean_count_label = val

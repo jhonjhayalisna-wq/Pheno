@@ -1331,7 +1331,17 @@ class Dashboard(QWidget):
         previous_level = logging.getLogLevel()
         logging.setLogLevel(logging.LOG_LEVEL_SILENT)
         try:
-            return cv2.VideoCapture(source, cv2.CAP_DSHOW)
+            capture = None
+            try:
+                capture = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+                if capture.isOpened():
+                    return capture
+            except (cv2.error, OSError):
+                pass
+
+            if capture is not None:
+                capture.release()
+            return cv2.VideoCapture(source)
         finally:
             logging.setLogLevel(previous_level)
 

@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import cv2
 import numpy as np
@@ -38,6 +38,41 @@ class CameraControlTests(unittest.TestCase):
         self.assertEqual(
             dashboard.camera_stream_overrides[cv2.CAP_PROP_FRAME_HEIGHT],
             480,
+        )
+
+    def test_dashboard_camera_open_falls_back_from_directshow(self):
+        class FakeCapture:
+            def __init__(self, opened):
+                self.opened = opened
+                self.released = False
+
+            def isOpened(self):
+                return self.opened
+
+            def release(self):
+                self.released = True
+
+        directshow_capture = FakeCapture(opened=False)
+        automatic_capture = FakeCapture(opened=True)
+        with patch("GUI.dashboard.load_yolo_model", return_value=(None, None)):
+            with patch.object(Dashboard, "update_arduino_status"):
+                dashboard = Dashboard()
+        self.addCleanup(dashboard.close)
+        dashboard.arduino_timer.stop()
+        with patch(
+            "GUI.dashboard.cv2.VideoCapture",
+            side_effect=[directshow_capture, automatic_capture],
+        ) as video_capture:
+            capture = dashboard.open_camera(0)
+
+        self.assertIs(capture, automatic_capture)
+        self.assertTrue(directshow_capture.released)
+        self.assertEqual(
+            video_capture.call_args_list,
+            [
+                call(0, cv2.CAP_DSHOW),
+                call(0),
+            ],
         )
 
     def test_camera_properties_are_applied_and_unsupported_controls_reported(self):
@@ -442,6 +477,9 @@ class CameraControlTests(unittest.TestCase):
 
             def start_camera(self):
                 self.camera_enabled = True
+
+            def stop_camera(self):
+                self.camera_enabled = False
 
         controller = FakeController()
         page = CameraPage(camera_controller=controller)
