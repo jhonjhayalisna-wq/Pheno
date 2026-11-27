@@ -1304,6 +1304,110 @@ class HardwareCompatibilityTests(unittest.TestCase):
         )
         self.assertEqual(dashboard.foreign_objects_value.text(), "3")
 
+    def test_all_batch_totals_period_buttons_filter_completed_batches(self):
+        dashboard = Dashboard()
+        self.addCleanup(dashboard.close)
+
+        def batch(
+            completed_at: datetime,
+            item_count: int,
+            good_count: int,
+            weight: float,
+            foreign_objects: int,
+            defect: str,
+        ) -> dict[str, object]:
+            defect_counts = {key: 0 for key in dashboard.defect_counts}
+            if defect:
+                defect_counts[defect] = 1
+            return {
+                "completed_at": completed_at,
+                "item_count": item_count,
+                "good_count": good_count,
+                "weight": weight,
+                "foreign_objects": foreign_objects,
+                "total_value": 0.0,
+                "grade_counts": {
+                    "A": good_count,
+                    "B": item_count - good_count,
+                    "C": 0,
+                },
+                "defect_counts": defect_counts,
+            }
+
+        dashboard.completed_batches = [
+            batch(datetime(2026, 11, 25, 9), 3, 2, 10.0, 1, "MOLDY"),
+            batch(datetime(2026, 11, 23, 9), 2, 1, 20.0, 0, "BROKEN"),
+            batch(datetime(2026, 11, 22, 9), 4, 3, 40.0, 2, "FLAT"),
+            batch(datetime(2026, 11, 26, 9), 5, 4, 50.0, 3, "DOUBLE"),
+        ]
+
+        expected_totals = {
+            "TODAY": ("1", "10.00", "1", "2", "1"),
+            "THIS WEEK": ("2", "30.00", "2", "3", "1"),
+            "ALL TIME": ("4", "120.00", "4", "10", "6"),
+        }
+        expected_defects = {
+            "TODAY": {
+                "MOLDY": "1",
+                "BROKEN": "0",
+                "FLAT": "0",
+                "DOUBLE": "0",
+            },
+            "THIS WEEK": {
+                "MOLDY": "1",
+                "BROKEN": "1",
+                "FLAT": "0",
+                "DOUBLE": "0",
+            },
+            "ALL TIME": {
+                "MOLDY": "1",
+                "BROKEN": "1",
+                "FLAT": "1",
+                "DOUBLE": "1",
+            },
+        }
+        with patch("GUI.dashboard.datetime") as clock:
+            clock.now.return_value = datetime(2026, 11, 25, 12)
+            for period, expected in expected_totals.items():
+                with self.subTest(period=period):
+                    dashboard.totals_period_buttons[period].click()
+                    self.assertEqual(dashboard.selected_totals_period, period)
+                    self.assertEqual(
+                        dashboard.batches_processed_value.text(),
+                        expected[0],
+                    )
+                    self.assertEqual(
+                        dashboard.total_weight_value.text(),
+                        expected[1],
+                    )
+                    self.assertEqual(
+                        dashboard.total_bad_bean_value.text(),
+                        expected[2],
+                    )
+                    self.assertEqual(
+                        dashboard.total_good_bean_value.text(),
+                        expected[3],
+                    )
+                    self.assertEqual(
+                        dashboard.foreign_objects_value.text(),
+                        expected[4],
+                    )
+                    self.assertEqual(
+                        [
+                            button.isChecked()
+                            for button in dashboard.totals_period_buttons.values()
+                        ],
+                        [
+                            button.text() == period
+                            for button in dashboard.totals_period_buttons.values()
+                        ],
+                    )
+                    for defect, count in expected_defects[period].items():
+                        self.assertEqual(
+                            dashboard.defect_count_labels[defect].text(),
+                            count,
+                        )
+
     def test_all_batch_totals_fit_screen_and_pair_good_with_foreign(self):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

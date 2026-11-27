@@ -1799,18 +1799,19 @@ class Dashboard(QWidget):
 
     def update_all_batches_totals_display(self) -> None:
         now = datetime.now()
+        today = now.date()
         if self.selected_totals_period == "TODAY":
             filtered_batches = [
                 record
                 for record in self.completed_batches
-                if record["completed_at"].date() == now.date()
+                if record["completed_at"].date() == today
             ]
         elif self.selected_totals_period == "THIS WEEK":
-            week_start = (now - timedelta(days=now.weekday())).date()
+            week_start = today - timedelta(days=now.weekday())
             filtered_batches = [
                 record
                 for record in self.completed_batches
-                if record["completed_at"].date() >= week_start
+                if week_start <= record["completed_at"].date() <= today
             ]
         else:
             filtered_batches = list(self.completed_batches)
