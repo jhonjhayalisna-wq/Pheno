@@ -495,6 +495,9 @@ class PricingSettingsPage(QWidget):
                 score_input.setAccessibleName(
                     f"{title} score assigned to grade {grade}"
                 )
+                if grade == "A":
+                    score_input.setText("100")
+                    score_input.setReadOnly(True)
                 score_input.textChanged.connect(
                     self._moisture_grade_scores_changed
                     if grade_inputs is moisture_inputs
@@ -716,8 +719,13 @@ class PricingSettingsPage(QWidget):
 
         self.base_price_input.setReadOnly(saved)
         for grade in ("A", "B", "C"):
-            self.moisture_grade_score_inputs[grade].setReadOnly(saved)
-            self.pns_grade_score_inputs[grade].setReadOnly(saved)
+            grade_is_fixed = grade == "A"
+            self.moisture_grade_score_inputs[grade].setReadOnly(
+                saved or grade_is_fixed
+            )
+            self.pns_grade_score_inputs[grade].setReadOnly(
+                saved or grade_is_fixed
+            )
         self.moisture_effect_slider.setEnabled(not saved)
 
     def _save_inputs_are_valid(self) -> bool:
@@ -743,24 +751,28 @@ class PricingSettingsPage(QWidget):
             str(settings.value("pricing/inputs/base_price", "", type=str))
         )
         for grade in ("A", "B", "C"):
-            self.moisture_grade_score_inputs[grade].setText(
-                str(
-                    settings.value(
-                        f"pricing/inputs/moisture_score_{grade}",
-                        "",
-                        type=str,
+            if grade == "A":
+                self.moisture_grade_score_inputs[grade].setText("100")
+                self.pns_grade_score_inputs[grade].setText("100")
+            else:
+                self.moisture_grade_score_inputs[grade].setText(
+                    str(
+                        settings.value(
+                            f"pricing/inputs/moisture_score_{grade}",
+                            "",
+                            type=str,
+                        )
                     )
                 )
-            )
-            self.pns_grade_score_inputs[grade].setText(
-                str(
-                    settings.value(
-                        f"pricing/inputs/pns_score_{grade}",
-                        "",
-                        type=str,
+                self.pns_grade_score_inputs[grade].setText(
+                    str(
+                        settings.value(
+                            f"pricing/inputs/pns_score_{grade}",
+                            "",
+                            type=str,
+                        )
                     )
                 )
-            )
         moisture_effect = settings.value(
             "pricing/inputs/moisture_effect",
             50,

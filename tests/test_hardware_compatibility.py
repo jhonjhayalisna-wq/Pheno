@@ -2272,8 +2272,15 @@ class HardwareCompatibilityTests(unittest.TestCase):
             *page.pns_grade_score_inputs.values(),
         )
         self.assertEqual(len(grade_fields), 6)
+        for grade in ("A", "B", "C"):
+            moisture_field = page.moisture_grade_score_inputs[grade]
+            pns_field = page.pns_grade_score_inputs[grade]
+            expected_text = "100" if grade == "A" else ""
+            self.assertEqual(moisture_field.text(), expected_text)
+            self.assertEqual(pns_field.text(), expected_text)
+            self.assertEqual(moisture_field.isReadOnly(), grade == "A")
+            self.assertEqual(pns_field.isReadOnly(), grade == "A")
         for field in grade_fields:
-            self.assertEqual(field.text(), "")
             self.assertEqual(field.placeholderText(), "0 to 100")
             self.assertEqual(field.validator().bottom(), 0)
             self.assertEqual(field.validator().top(), 100)
@@ -2547,15 +2554,16 @@ class HardwareCompatibilityTests(unittest.TestCase):
         restored_page = PricingSettingsPage()
         self.assertEqual(restored_page.save_inputs_button.text(), "Save inputs")
         self.assertEqual(restored_page.base_price_input.text(), "")
-        self.assertTrue(
-            all(
-                not field.text()
-                for field in (
-                    *restored_page.moisture_grade_score_inputs.values(),
-                    *restored_page.pns_grade_score_inputs.values(),
-                )
+        for grade in ("A", "B", "C"):
+            expected_text = "100" if grade == "A" else ""
+            self.assertEqual(
+                restored_page.moisture_grade_score_inputs[grade].text(),
+                expected_text,
             )
-        )
+            self.assertEqual(
+                restored_page.pns_grade_score_inputs[grade].text(),
+                expected_text,
+            )
         self.assertEqual(restored_page.moisture_effect_slider.value(), 50)
         self.assertFalse(restored_page.base_price_input.isReadOnly())
         self.assertTrue(restored_page.moisture_effect_slider.isEnabled())
