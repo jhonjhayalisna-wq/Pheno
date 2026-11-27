@@ -25,6 +25,7 @@ try:
     from .dashboard import Dashboard
     from .history import BatchHistoryPage
     from .pricing import PricingSettingsPage
+    from .results import ResultsPage
     from .touch_scrolling import enable_touch_scrolling
     from .touch_keyboard import install_touch_keyboard
 except ImportError:
@@ -36,6 +37,7 @@ except ImportError:
     from dashboard import Dashboard
     from history import BatchHistoryPage
     from pricing import PricingSettingsPage
+    from results import ResultsPage
     from touch_scrolling import enable_touch_scrolling
     from touch_keyboard import install_touch_keyboard
 
@@ -101,11 +103,13 @@ class MainWindow(QMainWindow):
         self.current_batch_button = self.create_menu_button('CURRENT BATCH')
         self.batch_history_button = self.create_menu_button('BATCH HISTORY')
         self.pricing_button = self.create_menu_button('PRICING SETTINGS')
+        self.weight_settings_button = self.create_menu_button('WEIGHT SETTINGS')
         self.menu_buttons = [
             self.dashboard_button,
             self.current_batch_button,
             self.batch_history_button,
             self.pricing_button,
+            self.weight_settings_button,
         ]
 
         for button in self.menu_buttons:
@@ -257,6 +261,15 @@ class MainWindow(QMainWindow):
         pricing_scroll.setWidget(self.pricing_page)
         self.pages.addWidget(pricing_scroll)
 
+        self.weight_settings_page = ResultsPage(self.dashboard_page)
+        weight_settings_scroll = QScrollArea()
+        weight_settings_scroll.setObjectName('weight_settings_scroll')
+        weight_settings_scroll.setWidgetResizable(True)
+        weight_settings_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        enable_touch_scrolling(weight_settings_scroll)
+        weight_settings_scroll.setWidget(self.weight_settings_page)
+        self.pages.addWidget(weight_settings_scroll)
+
         right_layout.addWidget(self.pages)
         main_layout.addWidget(sidebar)
         main_layout.addWidget(right_side)
@@ -265,6 +278,7 @@ class MainWindow(QMainWindow):
         self.current_batch_button.clicked.connect(lambda: self.change_page(1))
         self.batch_history_button.clicked.connect(lambda: self.change_page(2))
         self.pricing_button.clicked.connect(lambda: self.change_page(3))
+        self.weight_settings_button.clicked.connect(lambda: self.change_page(4))
         self.update_touch_layout()
 
     def update_touch_layout(self):

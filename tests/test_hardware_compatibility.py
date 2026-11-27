@@ -4100,7 +4100,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "SYSTEM OVERVIEW",
                 "CAMERA",
                 "NIR ANALYSIS",
-                "WEIGHT SETTINGS",
                 "SYSTEM SETTINGS",
                 "DEBUG LOGS",
                 "HISTORY",
@@ -4593,7 +4592,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertTrue(hasattr(window, "pricing_page"))
         self.assertIsNone(window.admin_panel)
         self.assertEqual(window.dashboard_page.camera_start_count, 0)
-        self.assertEqual(len(window.menu_buttons), 4)
+        self.assertEqual(len(window.menu_buttons), 5)
         self.assertEqual(
             window.menu_buttons[0].text().strip(),
             "Dashboard",
@@ -4609,6 +4608,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(
             window.menu_buttons[3].text().strip(),
             "Pricing Settings",
+        )
+        self.assertEqual(
+            window.menu_buttons[4].text().strip(),
+            "Weight Settings",
         )
         window.dashboard_page.start_system_button.click()
         self.assertEqual(window.dashboard_page.camera_start_count, 1)

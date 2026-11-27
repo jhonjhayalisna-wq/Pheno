@@ -34,7 +34,6 @@ from .camera import CameraPage
 from .dashboard import Dashboard
 from .history import HistoryPage
 from .nir_analysis import NIRAnalysisPage
-from .results import ResultsPage
 from .settings import SettingsPage
 from .show_password_checkbox import ShowPasswordCheckBox
 from .touch_scrolling import enable_touch_scrolling
@@ -532,7 +531,6 @@ class AdminControlPanel(QMainWindow):
         "System Overview",
         "Camera",
         "NIR Analysis",
-        "WEIGHT SETTINGS",
         "System Settings",
         "Process Monitor / Debug Logs",
         "History",
@@ -580,7 +578,6 @@ class AdminControlPanel(QMainWindow):
         self.stack.setObjectName("admin_pages")
         self.camera_page = CameraPage(camera_controller=self.dashboard)
         self.nir_page = NIRAnalysisPage()
-        self.results_page = ResultsPage(self.dashboard)
         self.settings_page = SettingsPage(
             self.dashboard,
             permission_check=lambda: self.session.is_admin,
@@ -590,7 +587,6 @@ class AdminControlPanel(QMainWindow):
             SystemOverviewPage(self.dashboard),
             self.camera_page,
             self.nir_page,
-            self.results_page,
             self.settings_page,
             ProcessMonitorPage(self.dashboard),
             self.history_page,

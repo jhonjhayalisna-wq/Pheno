@@ -76,7 +76,7 @@ QMainWindow {
 }
 
 #results_page {
-    background-color: #f4fbf5;
+    background-color: #ffffff;
 }
 
 QWidget {
@@ -182,6 +182,13 @@ QMainWindow#admin_control_panel,
 #pricing_scroll QWidget#qt_scrollarea_viewport,
 #pricing_scroll > QWidget {
     background-color: #f4f7f5;
+    border: none;
+}
+
+#weight_settings_scroll,
+#weight_settings_scroll QWidget#qt_scrollarea_viewport,
+#weight_settings_scroll > QWidget {
+    background-color: #ffffff;
     border: none;
 }
 
