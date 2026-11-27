@@ -1109,6 +1109,14 @@ class BeanDataSheetPage(QWidget):
         bean_id = metrics.get("bean_id")
         bean_count = int(_to_float(metrics.get("bean_count")) or 0)
         record_metrics = dict(metrics)
+        dashboard = self.sender()
+        final_camera_quality = getattr(
+            dashboard,
+            "current_bean_camera_quality",
+            None,
+        )
+        if final_camera_quality is not None:
+            record_metrics["quality"] = str(final_camera_quality)
         explicit_batch_number = _to_float(metrics.get("batch_number"))
         if explicit_batch_number is not None and explicit_batch_number >= 0:
             provided_batch_number = int(explicit_batch_number)

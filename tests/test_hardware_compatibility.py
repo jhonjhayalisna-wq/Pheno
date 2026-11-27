@@ -12,7 +12,15 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from PySide6.QtCore import QPoint, QEventLoop, QSettings, QTimer, Qt, Signal
+from PySide6.QtCore import (
+    QObject,
+    QPoint,
+    QEventLoop,
+    QSettings,
+    QTimer,
+    Qt,
+    Signal,
+)
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -3680,6 +3688,32 @@ class HardwareCompatibilityTests(unittest.TestCase):
 
         page.show_table("Moisture Content Sample")
         self.assertEqual(page.data_table.rowCount(), 0)
+        page.deleteLater()
+
+    def test_external_classification_uses_dashboard_rotation_result(self):
+        class DashboardResult(QObject):
+            bean_data_updated = Signal(object)
+
+            def __init__(self):
+                super().__init__()
+                self.current_bean_camera_quality = "GOOD"
+
+        page = BeanDataSheetPage()
+        dashboard = DashboardResult()
+        dashboard.bean_data_updated.connect(page.update_dashboard_metrics)
+        dashboard.bean_data_updated.emit(
+            {
+                "bean_id": "rotation-result",
+                "bean_count": 1,
+                "batch_number": 1,
+                "quality": "MOLDY",
+                "confidence": 0.9,
+            }
+        )
+
+        record = page.bean_records[(1, "rotation-result")]
+        self.assertEqual(record["quality"], "GOOD")
+        self.assertEqual(page.data_table.item(0, 1).text(), "GOOD")
         page.deleteLater()
 
     def test_load_cell_weight_above_100g_does_not_stop_system(self):
