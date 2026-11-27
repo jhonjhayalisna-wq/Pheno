@@ -1408,6 +1408,95 @@ class HardwareCompatibilityTests(unittest.TestCase):
                             count,
                         )
 
+    def test_all_batches_include_live_data_and_keep_completed_history(self):
+        dashboard = Dashboard()
+        self.addCleanup(dashboard.close)
+        history_defects = {
+            key: 0 for key in dashboard.defect_counts
+        }
+        history_defects["MOLDY"] = 1
+        completed_batch = {
+            "completed_at": datetime.now(),
+            "item_count": 4,
+            "good_count": 3,
+            "weight": 100.0,
+            "foreign_objects": 1,
+            "total_value": 20.0,
+            "grade_counts": {"A": 3, "B": 1, "C": 0},
+            "defect_counts": history_defects,
+        }
+        dashboard.completed_batches = [completed_batch]
+        dashboard.good_bean_count = 9
+        dashboard.not_good_bean_count = 4
+        dashboard.batch_foreign_objects = 5
+        dashboard.grade_counts = {"A": 9, "B": 4, "C": 0}
+        dashboard.defect_counts = {
+            key: 4 for key in dashboard.defect_counts
+        }
+        dashboard.total_value = 500.0
+        dashboard.start_camera = lambda: None
+        dashboard.stop_camera = lambda: None
+        dashboard.arduino_serial = SimpleNamespace(
+            is_open=True,
+            write=lambda _command: None,
+            close=lambda: None,
+        )
+        dashboard.write_arduino_command = lambda _command: True
+
+        dashboard.start_system()
+
+        self.assertEqual(dashboard.good_bean_count, 0)
+        self.assertEqual(dashboard.not_good_bean_count, 0)
+        self.assertEqual(dashboard.batch_foreign_objects, 0)
+        self.assertEqual(dashboard.grade_counts, {"A": 0, "B": 0, "C": 0})
+        self.assertEqual(set(dashboard.defect_counts.values()), {0})
+        self.assertEqual(dashboard.total_value, 0.0)
+        self.assertIs(dashboard.completed_batches[0], completed_batch)
+        self.assertEqual(dashboard.batches_processed_value.text(), "2")
+        self.assertEqual(dashboard.total_weight_value.text(), "100.00")
+        self.assertEqual(dashboard.total_good_bean_value.text(), "3")
+        self.assertEqual(dashboard.total_bad_bean_value.text(), "1")
+        self.assertEqual(dashboard.foreign_objects_value.text(), "1")
+        self.assertEqual(dashboard.defect_count_labels["MOLDY"].text(), "1")
+
+        dashboard.awaiting_bean_classification = True
+        self.assertTrue(dashboard._send_bean_sort_command("GOOD"))
+        dashboard.awaiting_bean_classification = True
+        self.assertTrue(dashboard._send_bean_sort_command("MOLDY"))
+        dashboard.awaiting_bean_classification = True
+        dashboard.current_bean_foreign_object = True
+        self.assertTrue(dashboard._send_bean_sort_command("UNDEFINED"))
+        dashboard.update_batch_weight_value(75.0)
+
+        self.assertEqual(dashboard.batches_processed_value.text(), "2")
+        self.assertEqual(dashboard.total_weight_value.text(), "175.00")
+        self.assertEqual(dashboard.total_good_bean_value.text(), "4")
+        self.assertEqual(dashboard.total_bad_bean_value.text(), "2")
+        self.assertEqual(dashboard.foreign_objects_value.text(), "2")
+        self.assertEqual(dashboard.defect_count_labels["MOLDY"].text(), "2")
+        self.assertEqual(
+            dashboard.completed_batches[0]["defect_counts"]["MOLDY"],
+            1,
+        )
+
+        dashboard.stop_system()
+        self.assertEqual(len(dashboard.completed_batches), 2)
+        dashboard.stop_system()
+        self.assertEqual(len(dashboard.completed_batches), 2)
+        dashboard.start_system()
+
+        self.assertEqual(len(dashboard.completed_batches), 2)
+        self.assertEqual(dashboard.batches_processed_value.text(), "3")
+        self.assertEqual(dashboard.total_weight_value.text(), "175.00")
+        self.assertEqual(dashboard.total_good_bean_value.text(), "4")
+        self.assertEqual(dashboard.total_bad_bean_value.text(), "2")
+        self.assertEqual(dashboard.foreign_objects_value.text(), "2")
+        self.assertEqual(dashboard.defect_count_labels["MOLDY"].text(), "2")
+        for period in ("TODAY", "THIS WEEK", "ALL TIME"):
+            dashboard.set_totals_period(period)
+            self.assertEqual(dashboard.batches_processed_value.text(), "3")
+            self.assertEqual(dashboard.total_weight_value.text(), "175.00")
+
     def test_all_batch_totals_fit_screen_and_pair_good_with_foreign(self):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

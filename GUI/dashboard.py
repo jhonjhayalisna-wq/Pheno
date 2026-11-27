@@ -761,20 +761,29 @@ class Dashboard(QWidget):
         self.bean_id_sequence = 0
         self.good_bean_count = 0
         self.not_good_bean_count = 0
+        self.grade_counts = {"A": 0, "B": 0, "C": 0}
+        self.defect_counts = {key: 0 for key in self.defect_counts}
         self.good_batch_weight_grams = 0.0
         self.not_good_batch_weight_grams = 0.0
         self.batch_foreign_objects = 0
+        self.total_value = 0.0
+        self._reset_current_bean_readings()
         self.foreign_object_count_value.setText("0")
         self.update_quality_totals_display()
         self.system_running = True
         self.set_ir_sample_active(True)
         self.start_camera()
+        self.update_all_batches_totals_display()
         self._update_system_controls(
             ""
         )
         self.emit_bean_data_update()
 
     def stop_system(self) -> None:
+        if not self.system_running:
+            if self.ir_sample_requested:
+                self.set_ir_sample_active(False)
+            return
         self.set_ir_sample_active(False)
         self.bean_rotation_active = False
         self.awaiting_bean_classification = False
@@ -1092,21 +1101,25 @@ class Dashboard(QWidget):
             self.batch_weight_value.setText("0")
             self.current_batch_weight_grams = 0.0
             self.update_quality_totals_display()
+            self.update_all_batches_totals_display()
             return
         self.current_batch_weight_grams = max(0.0, batch_weight_grams)
         self.batch_weight_value.setText(f"{batch_weight_grams:.2f}")
         self.update_quality_totals_display()
+        self.update_all_batches_totals_display()
 
     def update_batch_weight_display(self, weight_kg: float | None) -> None:
         if weight_kg is None:
             self.batch_weight_value.setText("0")
             self.current_batch_weight_grams = 0.0
             self.update_quality_totals_display()
+            self.update_all_batches_totals_display()
             return
         weight_grams = weight_kg * self.GRAMS_PER_KILOGRAM
         self.current_batch_weight_grams = max(0.0, weight_grams)
         self.batch_weight_value.setText(f"{weight_grams:.2f}")
         self.update_quality_totals_display()
+        self.update_all_batches_totals_display()
 
     def update_current_seed_id(self, bean_number: int) -> None:
         if bean_number <= 0:
@@ -1800,21 +1813,37 @@ class Dashboard(QWidget):
     def update_all_batches_totals_display(self) -> None:
         now = datetime.now()
         today = now.date()
+        batches = list(self.completed_batches)
+        if self.system_running:
+            batches.append(
+                {
+                    "completed_at": now,
+                    "item_count": (
+                        self.good_bean_count + self.not_good_bean_count
+                    ),
+                    "good_count": self.good_bean_count,
+                    "weight": self.current_batch_weight_grams,
+                    "foreign_objects": self.batch_foreign_objects,
+                    "total_value": self.total_value,
+                    "grade_counts": dict(self.grade_counts),
+                    "defect_counts": dict(self.defect_counts),
+                }
+            )
         if self.selected_totals_period == "TODAY":
             filtered_batches = [
                 record
-                for record in self.completed_batches
+                for record in batches
                 if record["completed_at"].date() == today
             ]
         elif self.selected_totals_period == "THIS WEEK":
             week_start = today - timedelta(days=now.weekday())
             filtered_batches = [
                 record
-                for record in self.completed_batches
+                for record in batches
                 if week_start <= record["completed_at"].date() <= today
             ]
         else:
-            filtered_batches = list(self.completed_batches)
+            filtered_batches = batches
 
         batch_count = len(filtered_batches)
         total_items = sum(
