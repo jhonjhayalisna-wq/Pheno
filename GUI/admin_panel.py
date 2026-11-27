@@ -707,7 +707,7 @@ class AdminControlPanel(QMainWindow):
         )
         self.admin_sidebar_logo.set_display_size(
             min(
-                self.admin_sidebar_logo.MAX_SIZE,
+                self.admin_sidebar_logo.MAX_SIZE - 20,
                 self.admin_sidebar.width() - 28,
             )
         )
