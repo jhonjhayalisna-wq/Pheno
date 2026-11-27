@@ -30,6 +30,7 @@ from .auth import (
     AdminSession,
     AuthStorageError,
 )
+from .branding import create_sidebar_logo
 from .camera import CameraPage
 from .dashboard import Dashboard
 from .history import HistoryPage
@@ -568,10 +569,20 @@ class AdminControlPanel(QMainWindow):
         self.admin_sidebar = sidebar
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(14, 14, 14, 12)
+        branding_layout = QVBoxLayout()
+        branding_layout.setContentsMargins(0, 0, 0, 0)
+        branding_layout.setSpacing(0)
+        self.admin_sidebar_logo = create_sidebar_logo()
+        branding_layout.addWidget(
+            self.admin_sidebar_logo,
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
         heading = QLabel("ADMIN")
         heading.setObjectName("logo_title")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sidebar_layout.addWidget(heading)
+        branding_layout.addWidget(heading)
+        sidebar_layout.addLayout(branding_layout)
         sidebar_layout.addSpacing(10)
 
         self.stack = QStackedWidget()
@@ -693,6 +704,12 @@ class AdminControlPanel(QMainWindow):
         narrow = self.width() < 720
         self.admin_sidebar.setFixedWidth(
             128 if narrow else 176 if compact else 312
+        )
+        self.admin_sidebar_logo.set_display_size(
+            min(
+                self.admin_sidebar_logo.MAX_SIZE,
+                self.admin_sidebar.width() - 28,
+            )
         )
         self.admin_sidebar.setProperty("compact", compact)
         self.admin_sidebar.style().unpolish(self.admin_sidebar)

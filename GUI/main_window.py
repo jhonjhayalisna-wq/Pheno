@@ -22,6 +22,7 @@ try:
     from .animated_button import AnimatedButton
     from .auth import AdminCredentials, AdminSession, AuthStorageError
     from .bean_data_sheet import BeanDataSheetPage
+    from .branding import create_sidebar_logo
     from .dashboard import Dashboard
     from .history import BatchHistoryPage
     from .pricing import PricingSettingsPage
@@ -34,6 +35,7 @@ except ImportError:
     from animated_button import AnimatedButton
     from auth import AdminCredentials, AdminSession, AuthStorageError
     from bean_data_sheet import BeanDataSheetPage
+    from branding import create_sidebar_logo
     from dashboard import Dashboard
     from history import BatchHistoryPage
     from pricing import PricingSettingsPage
@@ -87,16 +89,27 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(14, 14, 14, 12)
         sidebar_layout.setSpacing(5)
 
+        branding_layout = QVBoxLayout()
+        branding_layout.setContentsMargins(0, 0, 0, 0)
+        branding_layout.setSpacing(0)
+        self.sidebar_logo = create_sidebar_logo()
+        branding_layout.addWidget(
+            self.sidebar_logo,
+            0,
+            Qt.AlignmentFlag.AlignHCenter,
+        )
+
         logo_title = QLabel('PHENOCOATER')
         logo_title.setObjectName('logo_title')
         logo_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo_title.setWordWrap(True)
-        sidebar_layout.addWidget(logo_title)
+        branding_layout.addWidget(logo_title)
 
         logo_subtitle = QLabel('Cacao Seed Sorting' + '\n' + '& Grading System')
         logo_subtitle.setObjectName('logo_subtitle')
         logo_subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        sidebar_layout.addWidget(logo_subtitle)
+        branding_layout.addWidget(logo_subtitle)
+        sidebar_layout.addLayout(branding_layout)
         sidebar_layout.addSpacing(12)
 
         self.dashboard_button = self.create_menu_button('DASHBOARD')
@@ -287,6 +300,12 @@ class MainWindow(QMainWindow):
         compact = self.width() < 1000
         narrow = self.width() < 720
         self.sidebar.setFixedWidth(128 if narrow else 176 if compact else 312)
+        self.sidebar_logo.set_display_size(
+            min(
+                self.sidebar_logo.MAX_SIZE,
+                self.sidebar.width() - 28,
+            )
+        )
         self.sidebar.setProperty('compact', compact)
         self.sidebar.style().unpolish(self.sidebar)
         self.sidebar.style().polish(self.sidebar)
