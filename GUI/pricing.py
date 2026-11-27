@@ -742,6 +742,16 @@ class PricingSettingsPage(QWidget):
             )
         )
 
+    def has_required_pricing_values(self) -> bool:
+        return all(
+            field.text().strip() and field.hasAcceptableInput()
+            for field in (
+                self.base_price_input,
+                *self.moisture_grade_score_inputs.values(),
+                *self.pns_grade_score_inputs.values(),
+            )
+        )
+
     def _load_saved_inputs(self) -> None:
         settings = QSettings("PhenoCoater", "PhenoCoater")
         if not settings.value("pricing/inputs/saved", False, type=bool):

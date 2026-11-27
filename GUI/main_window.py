@@ -5,6 +5,7 @@ from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -55,11 +56,114 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(640, 360)
         self.setup_ui()
         self.dashboard_page.start_system_button.clicked.connect(
-            self.dashboard_page.start_system
+            self.start_system
         )
         self.dashboard_page.stop_system_button.clicked.connect(
             self.dashboard_page.stop_system
         )
+
+    def start_system(self) -> None:
+        if self.pricing_page.has_required_pricing_values():
+            self.dashboard_page.start_system()
+            return
+
+        viewport = self.dashboard_scroll.viewport()
+
+        dialog = QDialog(self)
+        dialog.setObjectName("pricing_inputs_required_dialog")
+        dialog.setWindowFlags(
+            Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint
+        )
+        dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        dialog.setFixedWidth(420)
+        dialog.setStyleSheet(
+            """
+            QDialog#pricing_inputs_required_dialog {
+                background-color: transparent;
+                border: none;
+                font-family: "Segoe UI";
+            }
+            QFrame#pricing_inputs_required_card {
+                background-color: #ffffff;
+                border: 1px solid #9ca3af;
+                border-radius: 14px;
+            }
+            QLabel#pricing_inputs_required_icon {
+                background-color: #e8f5e9;
+                border: 1px solid #cfe5d5;
+                border-radius: 20px;
+                color: #2e7d4f;
+                font-size: 22px;
+                font-weight: 700;
+            }
+            QLabel#pricing_inputs_required_message {
+                background: transparent;
+                color: #000000;
+                font-size: 16px;
+                font-weight: 700;
+            }
+            QPushButton#pricing_inputs_ok_button {
+                min-width: 88px;
+                min-height: 38px;
+                background-color: #2e7d4f;
+                border: 1px solid #2e7d4f;
+                border-radius: 7px;
+                color: #ffffff;
+                font-size: 13px;
+                font-weight: 700;
+                padding: 0 16px;
+                text-align: center;
+            }
+            QPushButton#pricing_inputs_ok_button:hover {
+                background-color: #24643e;
+                border-color: #24643e;
+            }
+            QPushButton#pricing_inputs_ok_button:pressed {
+                background-color: #1f5c38;
+                border-color: #1f5c38;
+            }
+            """
+        )
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+        card = QFrame(dialog)
+        card.setObjectName("pricing_inputs_required_card")
+        card.setFrameShape(QFrame.Shape.NoFrame)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(26, 24, 26, 22)
+        card_layout.setSpacing(22)
+        layout.addWidget(card)
+        message_row = QHBoxLayout()
+        message_row.setSpacing(16)
+        icon = QLabel("!")
+        icon.setObjectName("pricing_inputs_required_icon")
+        icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon.setFixedSize(40, 40)
+        icon.setAccessibleName("Attention")
+        message = QLabel("PLEASE INPUT DATA IN THE PRICING SETTINGS")
+        message.setObjectName("pricing_inputs_required_message")
+        message.setWordWrap(True)
+        message_row.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
+        message_row.addWidget(message, 1)
+        card_layout.addLayout(message_row)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        ok_button = QPushButton("OK")
+        ok_button.setObjectName("pricing_inputs_ok_button")
+        buttons.addWidget(ok_button)
+        card_layout.addLayout(buttons)
+        ok_button.clicked.connect(dialog.accept)
+
+        dialog.adjustSize()
+        dashboard_center = viewport.mapToGlobal(viewport.rect().center())
+        dialog_center = self.mapFromGlobal(dashboard_center)
+        dialog.move(
+            dialog_center.x() - dialog.width() // 2,
+            dialog_center.y() - dialog.height() // 2,
+        )
+        dialog.exec()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -188,6 +292,7 @@ class MainWindow(QMainWindow):
         dashboard_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         enable_touch_scrolling(dashboard_scroll)
         dashboard_scroll.setWidget(self.dashboard_page)
+        self.dashboard_scroll = dashboard_scroll
         self.pages.addWidget(dashboard_scroll)
 
         self.bean_data_sheet_page = BeanDataSheetPage()

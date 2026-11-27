@@ -212,6 +212,71 @@ class HardwareCompatibilityTests(unittest.TestCase):
         settings.remove("pricing/inputs")
         settings.sync()
 
+    def test_start_system_ok_closes_missing_pricing_popup(self):
+        with patch("GUI.main_window.Dashboard", FakeDashboard):
+            window = MainWindow()
+        self.addCleanup(window.close)
+        window.show()
+
+        def click_ok_button():
+            dialog = QApplication.activeModalWidget()
+            self.assertIsInstance(dialog, QDialog)
+            self.assertEqual(
+                dialog.objectName(),
+                "pricing_inputs_required_dialog",
+            )
+            self.assertIn(
+                "background-color: #ffffff;",
+                dialog.styleSheet(),
+            )
+            self.assertIn("border: 1px solid #9ca3af;", dialog.styleSheet())
+            card = dialog.findChild(QFrame, "pricing_inputs_required_card")
+            self.assertIsNotNone(card)
+            message = dialog.findChild(
+                QLabel,
+                "pricing_inputs_required_message",
+            )
+            self.assertEqual(
+                message.text(),
+                "PLEASE INPUT DATA IN THE PRICING SETTINGS",
+            )
+            buttons = dialog.findChildren(QPushButton)
+            self.assertEqual(len(buttons), 1)
+            self.assertEqual(buttons[0].text(), "OK")
+            self.assertLess(dialog.width(), window.width())
+            self.assertLess(dialog.height(), window.height())
+            self.assertEqual(
+                dialog.windowModality(),
+                Qt.WindowModality.ApplicationModal,
+            )
+            buttons[0].click()
+
+        QTimer.singleShot(0, click_ok_button)
+        window.dashboard_page.start_system_button.click()
+        self.assertEqual(window.dashboard_page.camera_start_count, 0)
+
+    def test_start_system_starts_when_all_pricing_values_are_valid(self):
+        with patch("GUI.main_window.Dashboard", FakeDashboard):
+            window = MainWindow()
+        self.addCleanup(window.close)
+        window.pricing_page.base_price_input.setText("25.00")
+        for grade in ("B", "C"):
+            window.pricing_page.moisture_grade_score_inputs[grade].setText(
+                "80"
+            )
+            window.pricing_page.pns_grade_score_inputs[grade].setText("90")
+        self.assertEqual(window.pricing_page.moisture_score_input.text(), "")
+        self.assertEqual(window.pricing_page.pns_score_input.text(), "")
+        self.assertEqual(
+            window.pricing_page.moisture_effect_slider.value(),
+            50,
+        )
+        self.assertTrue(window.pricing_page.has_required_pricing_values())
+
+        window.dashboard_page.start_system_button.click()
+
+        self.assertEqual(window.dashboard_page.camera_start_count, 1)
+
     def test_main_window_uses_requested_system_font_tiers(self):
         previous_style = self.application.styleSheet()
         self.application.setStyleSheet(APP_STYLE)
@@ -4638,6 +4703,12 @@ class HardwareCompatibilityTests(unittest.TestCase):
             window.menu_buttons[4].text().strip(),
             "Weight Settings",
         )
+        window.pricing_page.base_price_input.setText("25.00")
+        for grade in ("B", "C"):
+            window.pricing_page.moisture_grade_score_inputs[grade].setText(
+                "80"
+            )
+            window.pricing_page.pns_grade_score_inputs[grade].setText("90")
         window.dashboard_page.start_system_button.click()
         self.assertEqual(window.dashboard_page.camera_start_count, 1)
         window.dashboard_page.stop_system_button.click()
