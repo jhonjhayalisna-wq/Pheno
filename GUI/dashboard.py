@@ -1241,20 +1241,23 @@ class Dashboard(QWidget):
     def update_responsive_layout(self) -> None:
         if not hasattr(self, "middle_layout") or not hasattr(
             self, "camera_frame"
-        ):
+        ) or not hasattr(self, "breakdown_layout"):
             return
 
         width = self.width()
+        parent = self.parentWidget()
+        if parent is not None and parent.width() > 0:
+            width = min(width, parent.width())
 
         if width < 520:
             columns = 1
             totals_columns = 2
         elif width < 900:
             columns = 2
-            totals_columns = 4
+            totals_columns = 2
         else:
             columns = 5
-            totals_columns = 4
+            totals_columns = 3
 
         if columns != getattr(self, "card_columns", None):
             self.card_columns = columns
@@ -1269,6 +1272,16 @@ class Dashboard(QWidget):
             if is_narrow
             else QBoxLayout.Direction.LeftToRight
         )
+        self.totals_heading_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if width < 520
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self.breakdown_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if width < 900
+            else QBoxLayout.Direction.LeftToRight
+        )
         preview_width = (
             180
             if width < 760
@@ -1277,6 +1290,7 @@ class Dashboard(QWidget):
         preview_width = max(180, preview_width // 9 * 9)
         preview_height = preview_width * 16 // 9
         self.camera_frame.setFixedSize(preview_width, preview_height)
+        self.updateGeometry()
 
     def reflow_cards(self, columns: int) -> None:
         while self.cards_layout.count():
@@ -1814,28 +1828,10 @@ class Dashboard(QWidget):
         total_foreign_objects = sum(
             int(record["foreign_objects"]) for record in filtered_batches
         )
-        pns_scores = [
-            int(record["pns_score"]) for record in filtered_batches
-        ]
-        moisture_values = [
-            float(record["moisture"])
-            for record in filtered_batches
-            if record["moisture"] is not None
-        ]
         total_value = sum(
             float(record["total_value"]) for record in filtered_batches
         )
         bad_items = total_items - good_items
-        avg_pns_score = (
-            sum(pns_scores) / len(pns_scores)
-            if pns_scores
-            else 0.0
-        )
-        avg_moisture = (
-            sum(moisture_values) / len(moisture_values)
-            if moisture_values
-            else 0.0
-        )
 
         labels: tuple[tuple[QLabel | None, str], ...] = (
             (self.batches_processed_value, str(batch_count)),
@@ -1843,8 +1839,6 @@ class Dashboard(QWidget):
             (self.total_bad_bean_value, str(bad_items)),
             (self.total_good_bean_value, str(good_items)),
             (self.total_value_value, f"₱ {total_value:,.2f}"),
-            (self.avg_pns_score_value, f"{avg_pns_score:.2f}"),
-            (self.avg_moisture_value, f"{avg_moisture:.2f}%"),
             (self.foreign_objects_value, str(total_foreign_objects)),
         )
         for label, text in labels:
@@ -2441,6 +2435,7 @@ class Dashboard(QWidget):
         totals_heading_layout.addStretch()
 
         self.totals_period_buttons: dict[str, QPushButton] = {}
+        totals_period_buttons_layout = QHBoxLayout()
         for period in ("TODAY", "THIS WEEK", "ALL TIME"):
             period_button = QPushButton(period)
             period_button.setObjectName("dashboard_totals_period_button")
@@ -2449,8 +2444,11 @@ class Dashboard(QWidget):
             period_button.clicked.connect(
                 lambda _checked=False, value=period: self.set_totals_period(value)
             )
-            totals_heading_layout.addWidget(period_button)
+            totals_period_buttons_layout.addWidget(period_button)
             self.totals_period_buttons[period] = period_button
+
+        self.totals_heading_layout = totals_heading_layout
+        totals_heading_layout.addLayout(totals_period_buttons_layout)
 
         heading_cards_layout.addLayout(totals_heading_layout)
 
@@ -2461,11 +2459,9 @@ class Dashboard(QWidget):
             self.create_card("BATCHES PROCESSED", "0", "batches"),
             self.create_card("TOTAL WEIGHT", "0", "grams"),
             self.create_card("TOTAL BAD BEAN", "0", "beans"),
-            self.create_card("TOTAL GOOD BEAN", "0", "beans"),
             self.create_card("TOTAL VALUE", "₱ 0.00", "peso"),
-            self.create_card("AVG PNS SCORE", "0.00", "out of 100"),
-            self.create_card("AVG MOISTURE", "0.00%", "content"),
             self.create_card("TOTAL FOREIGN OBJECTS", "0", "objects"),
+            self.create_card("TOTAL GOOD BEAN", "0", "beans"),
         ]
         self.batches_processed_value = self.totals_cards[0].findChild(
             QLabel, "card_value"
@@ -2476,19 +2472,13 @@ class Dashboard(QWidget):
         self.total_bad_bean_value = self.totals_cards[2].findChild(
             QLabel, "card_value"
         )
-        self.total_good_bean_value = self.totals_cards[3].findChild(
+        self.total_good_bean_value = self.totals_cards[5].findChild(
             QLabel, "card_value"
         )
-        self.total_value_value = self.totals_cards[4].findChild(
+        self.total_value_value = self.totals_cards[3].findChild(
             QLabel, "card_value"
         )
-        self.avg_pns_score_value = self.totals_cards[5].findChild(
-            QLabel, "card_value"
-        )
-        self.avg_moisture_value = self.totals_cards[6].findChild(
-            QLabel, "card_value"
-        )
-        self.foreign_objects_value = self.totals_cards[7].findChild(
+        self.foreign_objects_value = self.totals_cards[4].findChild(
             QLabel, "card_value"
         )
         for label_name, label in (
@@ -2497,8 +2487,6 @@ class Dashboard(QWidget):
             ("total_bad_bean", self.total_bad_bean_value),
             ("total_good_bean", self.total_good_bean_value),
             ("total_value", self.total_value_value),
-            ("avg_pns_score", self.avg_pns_score_value),
-            ("avg_moisture", self.avg_moisture_value),
             ("foreign_objects", self.foreign_objects_value),
         ):
             if label is None:
@@ -2508,6 +2496,7 @@ class Dashboard(QWidget):
         heading_cards_layout.addLayout(self.totals_cards_layout)
 
         breakdown_layout = QHBoxLayout()
+        self.breakdown_layout = breakdown_layout
         breakdown_layout.setContentsMargins(0, 0, 0, 0)
         breakdown_layout.setSpacing(12)
 

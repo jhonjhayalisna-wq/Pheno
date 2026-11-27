@@ -1178,7 +1178,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "item_count": 7,
                 "good_count": 4,
                 "weight": 100.0,
-                "foreign_objects": 0,
+                "foreign_objects": 2,
                 "pns_score": 80,
                 "moisture": None,
                 "total_value": 0.0,
@@ -1190,7 +1190,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "item_count": 5,
                 "good_count": 3,
                 "weight": 80.0,
-                "foreign_objects": 0,
+                "foreign_objects": 1,
                 "pns_score": 80,
                 "moisture": None,
                 "total_value": 0.0,
@@ -1212,9 +1212,53 @@ class HardwareCompatibilityTests(unittest.TestCase):
             dashboard.totals_cards[3]
             .findChild(QLabel, "card_title")
             .text(),
-            "TOTAL GOOD BEAN",
+            "TOTAL VALUE",
         )
         self.assertEqual(dashboard.total_good_bean_value.text(), "7")
+        self.assertEqual(
+            [
+                card.findChild(QLabel, "card_title").text()
+                for card in dashboard.totals_cards
+            ],
+            [
+                "BATCHES PROCESSED",
+                "TOTAL WEIGHT",
+                "TOTAL BAD BEAN",
+                "TOTAL VALUE",
+                "TOTAL FOREIGN OBJECTS",
+                "TOTAL GOOD BEAN",
+            ],
+        )
+        self.assertEqual(dashboard.foreign_objects_value.text(), "3")
+
+    def test_all_batch_totals_fit_screen_and_pair_good_with_foreign(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        dashboard = Dashboard()
+        scroll.setWidget(dashboard)
+        self.addCleanup(scroll.close)
+        self.addCleanup(dashboard.close)
+
+        scroll.resize(630, 420)
+        scroll.show()
+        self.application.processEvents()
+
+        self.assertEqual(dashboard.totals_card_columns, 2)
+        self.assertLessEqual(dashboard.width(), scroll.viewport().width())
+        foreign_position = dashboard.totals_cards_layout.getItemPosition(4)
+        good_position = dashboard.totals_cards_layout.getItemPosition(5)
+        self.assertEqual(foreign_position[0], good_position[0])
+        self.assertEqual(good_position[1], foreign_position[1] + 1)
+
+        scroll.resize(1100, 420)
+        self.application.processEvents()
+
+        self.assertEqual(dashboard.totals_card_columns, 3)
+        self.assertLessEqual(dashboard.width(), scroll.viewport().width())
+        foreign_position = dashboard.totals_cards_layout.getItemPosition(4)
+        good_position = dashboard.totals_cards_layout.getItemPosition(5)
+        self.assertEqual(foreign_position[0], good_position[0])
+        self.assertEqual(good_position[1], foreign_position[1] + 1)
 
     def test_dashboard_keeps_original_element_sizes_with_compact_spacing(self):
         scroll = QScrollArea()
