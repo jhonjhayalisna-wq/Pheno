@@ -42,7 +42,7 @@ class BatchHistoryPage(QWidget):
     COLUMNS = (
         "BATCH NO",
         "TOTAL BEANS",
-        "TOTAL WEIGHT",
+        "GOOD BEAN\nWEIGHT",
         "GOOD",
         "BAD",
         "FOREIGN",

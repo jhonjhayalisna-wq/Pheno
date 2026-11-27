@@ -4656,6 +4656,10 @@ class HardwareCompatibilityTests(unittest.TestCase):
             window.batch_history_page.data_table.columnCount(),
             len(window.batch_history_page.COLUMNS),
         )
+        self.assertEqual(
+            window.batch_history_page.data_table.horizontalHeaderItem(2).text(),
+            "GOOD BEAN\nWEIGHT",
+        )
         for title in ("Beans in 100g Sample",):
             window.bean_data_sheet_page.show_table(title)
             header = window.bean_data_sheet_page.data_table.horizontalHeader()
