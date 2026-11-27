@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QRegion
 from PySide6.QtWidgets import QLabel, QSizePolicy
 
 
@@ -34,6 +34,15 @@ class SidebarLogo(QLabel):
                 display_size,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        self.setMask(
+            QRegion(
+                0,
+                0,
+                display_size,
+                display_size,
+                QRegion.RegionType.Ellipse,
             )
         )
         self.updateGeometry()
