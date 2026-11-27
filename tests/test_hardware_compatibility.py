@@ -1948,18 +1948,22 @@ class HardwareCompatibilityTests(unittest.TestCase):
             f"{shuffled_moisture:.2f}",
         )
 
-    def test_nir_analysis_discloses_unavailable_moisture_estimation(self):
+    def test_nir_analysis_leaves_missing_results_blank(self):
         page = NIRAnalysisPage()
         self.addCleanup(page.close)
 
         title = page.findChild(QLabel, "page_title")
         self.assertIsNotNone(title)
         self.assertEqual(title.text(), "NIR ANALYSIS")
-        self.assertEqual(page.moisture_content_value.text(), "NOT AVAILABLE")
+        self.assertEqual(page.moisture_content_value.text(), "")
+        self.assertEqual(page.quality_value.text(), "")
+        self.assertEqual(page.nir_confidence_value.text(), "")
 
         page.update_bean_data({"bean_id": "bean-1", "moisture": None})
 
-        self.assertEqual(page.moisture_content_value.text(), "NOT AVAILABLE")
+        self.assertEqual(page.moisture_content_value.text(), "")
+        self.assertEqual(page.quality_value.text(), "")
+        self.assertEqual(page.nir_confidence_value.text(), "")
         page.update_bean_data(
             {
                 "nir_classification": "SLATY",
@@ -1970,6 +1974,16 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.quality_value.text(), "SLATY")
         self.assertEqual(page.nir_confidence_value.text(), "87.5%")
         self.assertEqual(page.moisture_content_value.text(), "12.50%")
+        page.update_bean_data(
+            {
+                "nir_classification": None,
+                "nir_confidence": None,
+                "moisture": None,
+            }
+        )
+        self.assertEqual(page.quality_value.text(), "")
+        self.assertEqual(page.nir_confidence_value.text(), "")
+        self.assertEqual(page.moisture_content_value.text(), "")
 
     def test_settings_omits_load_cell_offset_and_moisture_estimation(self):
         page = SettingsPage()
@@ -2110,14 +2124,15 @@ class HardwareCompatibilityTests(unittest.TestCase):
         session.grant_admin()
         panel = AdminControlPanel(dashboard, session)
         page = panel.nir_page
-        self.assertEqual(page.quality_value.text(), "WAITING FOR SCAN")
+        self.assertEqual(page.quality_value.text(), "")
+        self.assertEqual(page.moisture_content_value.text(), "")
         self.assertEqual(page.nir_confidence_value.text(), "")
         summary_labels = [
             label.text()
             for label in page.findChildren(QLabel)
         ]
-        self.assertIn("Quality", summary_labels)
-        self.assertIn("Confidence", summary_labels)
+        self.assertIn("QUALITY", summary_labels)
+        self.assertIn("CONFIDENCE", summary_labels)
         self.assertNotIn("NIR AI Result", summary_labels)
         self.assertNotIn("NIR AI Confidence", summary_labels)
         expected_values = [
@@ -2137,7 +2152,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 page.table.horizontalHeaderItem(column).text()
                 for column in range(page.table.columnCount())
             ],
-            [f"{wavelength}nm" for wavelength in WAVELENGTHS],
+            [f"{wavelength}NM" for wavelength in WAVELENGTHS],
         )
         self.assertEqual(
             [
@@ -2189,7 +2204,7 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.quality_value.text(), "MOLDY")
         self.assertEqual(page.nir_confidence_value.text(), "97.4%")
         page.set_classifier_result("UNAVAILABLE")
-        self.assertEqual(page.quality_value.text(), "Unavailable")
+        self.assertEqual(page.quality_value.text(), "UNAVAILABLE")
         self.assertEqual(page.nir_confidence_value.text(), "")
         for quality in ("GOOD", "MOLDY", "SLATY", "VOID"):
             page.set_classifier_result(quality, 90.0)

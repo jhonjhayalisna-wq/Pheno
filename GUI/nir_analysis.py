@@ -98,8 +98,8 @@ class NIRAnalysisPage(QWidget):
         summary_title.setProperty("class", "section_title")
         summary.addWidget(summary_title)
         summary_values = {
-            "MOISTURE CONTENT": QLabel("NOT AVAILABLE"),
-            "QUALITY": QLabel("WAITING FOR SCAN"),
+            "MOISTURE CONTENT": QLabel(""),
+            "QUALITY": QLabel(""),
             "CONFIDENCE": QLabel(""),
         }
         self.moisture_content_value = summary_values["MOISTURE CONTENT"]
@@ -152,7 +152,7 @@ class NIRAnalysisPage(QWidget):
             self.nir_confidence_value.setText("")
             return
         self.quality_value.setText(
-            normalized_label or "WAITING FOR SCAN"
+            normalized_label
         )
         self.nir_confidence_value.setText(
             "" if confidence is None else f"{confidence:.1f}%"
@@ -163,7 +163,7 @@ class NIRAnalysisPage(QWidget):
 
     def set_moisture_content(self, value: str | float | None) -> None:
         if value is None:
-            self.moisture_content_value.setText("NOT AVAILABLE")
+            self.moisture_content_value.setText("")
         elif isinstance(value, (int, float)):
             self.moisture_content_value.setText(f"{float(value):.2f}%")
         else:
