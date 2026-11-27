@@ -33,7 +33,6 @@ from .auth import (
 from .branding import create_sidebar_logo
 from .camera import CameraPage
 from .dashboard import Dashboard
-from .history import HistoryPage
 from .nir_analysis import NIRAnalysisPage
 from .settings import SettingsPage
 from .show_password_checkbox import ShowPasswordCheckBox
@@ -534,7 +533,6 @@ class AdminControlPanel(QMainWindow):
         "NIR Analysis",
         "System Settings",
         "Process Monitor / Debug Logs",
-        "History",
         "Create Admin Account",
     )
 
@@ -593,14 +591,12 @@ class AdminControlPanel(QMainWindow):
             self.dashboard,
             permission_check=lambda: self.session.is_admin,
         )
-        self.history_page = HistoryPage()
         pages: list[QWidget] = [
             SystemOverviewPage(self.dashboard),
             self.camera_page,
             self.nir_page,
             self.settings_page,
             ProcessMonitorPage(self.dashboard),
-            self.history_page,
             AdminAccountCreationPage(self.session, self.credentials),
         ]
         self.dashboard.nir_message_received.connect(

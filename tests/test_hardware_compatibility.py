@@ -50,7 +50,6 @@ from GUI.quality import (
     pns_grade_from_weighted_count,
 )
 from GUI.results import ResultsPage
-from GUI.history import get_batch_by_id, get_batches
 from GUI.nir_classifier import FEATURE_NAMES, NIRClassifier
 from GUI.nir_analysis import NIRAnalysisPage
 from GUI.settings import SettingsPage
@@ -4108,20 +4107,18 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "NIR ANALYSIS",
                 "SYSTEM SETTINGS",
                 "DEBUG LOGS",
-                "HISTORY",
                 "CREATE ADMIN",
             ),
         )
+        self.assertNotIn("History", panel.SECTION_NAMES)
         self.assertEqual(panel.stack.count(), len(panel.SECTION_NAMES))
-        history_index = panel.SECTION_NAMES.index("History")
-        debug_logs_index = panel.SECTION_NAMES.index(
-            "Process Monitor / Debug Logs"
-        )
-        self.assertEqual(history_index, debug_logs_index + 1)
         self.assertNotIn("Servo Control", panel.SECTION_NAMES)
         self.assertFalse(hasattr(panel, "servo_page"))
         self.assertEqual(dashboard.commands, [])
-        self.assertEqual(len(panel.admin_scroll_areas), 8)
+        self.assertEqual(
+            len(panel.admin_scroll_areas),
+            len(panel.SECTION_NAMES),
+        )
         self.assertTrue(panel.navigation_buttons[-1].isHidden())
         overview = panel.admin_scroll_areas[0].widget()
         self.assertEqual(
@@ -4233,28 +4230,6 @@ class HardwareCompatibilityTests(unittest.TestCase):
                 "#f4f6f8",
             )
 
-        panel.deleteLater()
-
-    def test_admin_history_does_not_show_unverified_static_batch(self):
-        dashboard = FakeDashboard()
-        session = AdminSession()
-        session.grant_admin()
-        panel = AdminControlPanel(dashboard, session)
-        history_index = panel.SECTION_NAMES.index("History")
-
-        self.assertEqual(get_batches(), ())
-        self.assertIsNone(get_batch_by_id("0001"))
-
-        panel.change_page(history_index)
-        history = panel.history_page
-        self.assertEqual(history.views.currentWidget(), history.list_view)
-        entries = history.findChildren(QPushButton, "history_batch_entry")
-        self.assertEqual(len(entries), 0)
-        self.assertEqual(
-            history.findChild(QLabel, "history_empty_message").text(),
-            "No batches yet",
-        )
-        self.assertEqual(history.batch_entries.count(), 1)
         panel.deleteLater()
 
     def test_super_admin_can_create_admin_with_username_and_password_only(self):
