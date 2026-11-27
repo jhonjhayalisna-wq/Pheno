@@ -4,7 +4,6 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtMultimedia import QMediaDevices
 from PySide6.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -185,32 +184,6 @@ class SettingsPage(QWidget):
         connection_panel.setLayout(connection_form)
         layout.addWidget(connection_panel)
 
-        sensor_form = QFormLayout()
-        sensor_form.setLabelAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        sensor_form.setHorizontalSpacing(25)
-        sensor_form.setVerticalSpacing(15)
-        weight_input = QDoubleSpinBox()
-        weight_input.setRange(-1000000, 1000000)
-        weight_input.setDecimals(3)
-        weight_input.setSuffix(" g")
-        add_centered_form_row(sensor_form, "LOAD CELL OFFSET", weight_input)
-        moisture_status = QLabel(
-            "NOT AVAILABLE: A CALIBRATED NIR MOISTURE MODEL IS REQUIRED."
-        )
-        moisture_status.setObjectName("moisture_estimation_status")
-        moisture_status.setWordWrap(True)
-        add_centered_form_row(
-            sensor_form,
-            "MOISTURE ESTIMATION",
-            moisture_status,
-        )
-        sensor_panel = QFrame()
-        sensor_panel.setObjectName("settings_panel")
-        sensor_panel.setLayout(sensor_form)
-        layout.addWidget(sensor_panel)
-
         actions = QHBoxLayout()
         actions.addStretch()
         reset_button = AnimatedButton("RESET")
@@ -235,7 +208,6 @@ class SettingsPage(QWidget):
                 save_state.setText("ADMINISTRATOR ACCESS REQUIRED")
                 return
             self.refresh_live_settings()
-            weight_input.setValue(0)
             save_state.setText("SETTINGS RESET")
 
         def save_settings():

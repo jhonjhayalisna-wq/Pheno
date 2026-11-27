@@ -1662,19 +1662,17 @@ class HardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(page.nir_confidence_value.text(), "87.5%")
         self.assertEqual(page.moisture_content_value.text(), "12.50%")
 
-    def test_settings_discloses_that_moisture_offset_is_unimplemented(self):
+    def test_settings_omits_load_cell_offset_and_moisture_estimation(self):
         page = SettingsPage()
         self.addCleanup(page.port_refresh_timer.stop)
         self.addCleanup(page.close)
 
         status = page.findChild(QLabel, "moisture_estimation_status")
+        labels = [label.text() for label in page.findChildren(QLabel)]
 
-        self.assertIsNotNone(status)
-        self.assertIn("calibrated NIR moisture model", status.text())
-        self.assertNotIn(
-            "Moisture offset",
-            [label.text() for label in page.findChildren(QLabel)],
-        )
+        self.assertIsNone(status)
+        self.assertNotIn("LOAD CELL OFFSET", labels)
+        self.assertNotIn("MOISTURE ESTIMATION", labels)
 
     def test_nir_spectral_heading_and_bean_id_are_on_same_row(self):
         page = NIRAnalysisPage()
